@@ -108,15 +108,15 @@ for multi-clause, you'll want to make sure the mutation is isolated to each clau
 (module+ test
   (check-equal? (lens-get (lens-compose cdr-lens car-lens) pair4) (cadr pair4)))
 
-; creates a lens that focuses on a field of a struct
-; this doesn't work with sub-structs
+; creates a lens that focuses on a field of a struct.
+; for fields that are part of a super type, supply #:parent.
+; NOTE: if you use a super-type's lens to update a subtype, you will get an instance of the super-type, not the sub-type.
 (define-syntax struct-lens
   (syntax-parser
-    [(_ struct-name:id field-name:id)
+    [(_ struct-name:struct-id field-name:id (~optional (~seq #:parent parent-struct-name:struct-id)))
      #'(make-lens
-        (λ (target) (match target [(struct* struct-name ([field-name focus])) focus]))
-        ; TODO deal with #:parent
-        (λ (target new-focus) (struct-copy struct-name target [field-name new-focus])))]))
+        (λ (target) (match target [(struct* (~? parent-struct-name struct-name) ([field-name focus])) focus]))
+        (λ (target new-focus) (struct-copy struct-name target [field-name (~? (~@ #:parent parent-struct-name) (~@)) new-focus])))]))
 
 (module+ test
   (struct posn [x y] #:transparent)
@@ -128,17 +128,18 @@ for multi-clause, you'll want to make sure the mutation is isolated to each clau
   (check-equal? (lens-modify posn-x-lens posn34 -) (posn -3 4))
   (struct posn3 posn [z] #:transparent)
   (define posn3-z-lens (struct-lens posn3 z))
-  #;(define posn3-x-lens (struct-lens posn3 x))
+  (define posn3-x-lens (struct-lens posn3 x #:parent posn))
   (define posn345 (posn3 3 4 5))
   (check-equal? (lens-get posn3-z-lens posn345) 5)
   (check-equal? (lens-set posn3-z-lens posn345 6) (posn3 3 4 6))
   (check-equal? (lens-modify posn3-z-lens posn345 -) (posn3 3 4 -5))
   (check-equal? (lens-get posn-x-lens posn345) 3)
-  ; these don't work
-  #;(check-equal? (lens-set posn-x-lens posn345 1) (posn3 1 4 5))
-  #;(check-equal? (lens-modify posn-x-lens posn345 -) (posn3 -3 4 5))
-  #;(check-equal? (lens-set posn3-x-lens posn345 1) (posn3 1 4 5))
-  #;(check-equal? (lens-modify posn3-x-lens posn345 -) (posn3 -3 4 5)))
+  ; using a super-type's lens to update an instance of subtype results in an instance of the supertype
+  (check-equal? (lens-set posn-x-lens posn345 1) (posn 1 4))
+  (check-equal? (lens-modify posn-x-lens posn345 -) (posn -3 4))
+  (check-equal? (lens-get posn3-x-lens posn345) 3)
+  (check-equal? (lens-set posn3-x-lens posn345 1) (posn3 1 4 5))
+  (check-equal? (lens-modify posn3-x-lens posn345 -) (posn3 -3 4 5)))
 
 ; --- core compiler ---
 
@@ -179,7 +180,7 @@ for multi-clause, you'll want to make sure the mutation is isolated to each clau
        [(list) #'(update* target-var _ lens-so-far body)]
        [(list pat0 pat ...)
         #'(update* target-var (cons pat0 (list pat ...)) lens-so-far-var body)]
-       [(struct-field struct-name:id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
+       [(struct-field struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
         (define/syntax-parse struct-name? (get-struct-pred-id #'struct-name))
         #'(if (struct-name? target-var)
               (let* ([field-lens (struct-lens struct-name field-name)]
