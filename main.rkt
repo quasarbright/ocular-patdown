@@ -1,6 +1,6 @@
 #lang racket
 
-(require (for-syntax syntax/parse))
+(require (for-syntax syntax/parse syntax/parse/class/struct-id))
 (module+ test (require rackunit))
 
 #|
@@ -108,6 +108,38 @@ for multi-clause, you'll want to make sure the mutation is isolated to each clau
 (module+ test
   (check-equal? (lens-get (lens-compose cdr-lens car-lens) pair4) (cadr pair4)))
 
+; creates a lens that focuses on a field of a struct
+; this doesn't work with sub-structs
+(define-syntax struct-lens
+  (syntax-parser
+    [(_ struct-name:id field-name:id)
+     #'(make-lens
+        (λ (target) (match target [(struct* struct-name ([field-name focus])) focus]))
+        ; TODO deal with #:parent
+        (λ (target new-focus) (struct-copy struct-name target [field-name new-focus])))]))
+
+(module+ test
+  (struct posn [x y] #:transparent)
+  (define posn-x-lens (struct-lens posn x))
+  (define posn-y-lens (struct-lens posn y))
+  (define posn34 (posn 3 4))
+  (check-equal? (lens-get posn-x-lens posn34) 3)
+  (check-equal? (lens-set posn-x-lens posn34 5) (posn 5 4))
+  (check-equal? (lens-modify posn-x-lens posn34 -) (posn -3 4))
+  (struct posn3 posn [z] #:transparent)
+  (define posn3-z-lens (struct-lens posn3 z))
+  #;(define posn3-x-lens (struct-lens posn3 x))
+  (define posn345 (posn3 3 4 5))
+  (check-equal? (lens-get posn3-z-lens posn345) 5)
+  (check-equal? (lens-set posn3-z-lens posn345 6) (posn3 3 4 6))
+  (check-equal? (lens-modify posn3-z-lens posn345 -) (posn3 3 4 -5))
+  (check-equal? (lens-get posn-x-lens posn345) 3)
+  ; these don't work
+  #;(check-equal? (lens-set posn-x-lens posn345 1) (posn3 1 4 5))
+  #;(check-equal? (lens-modify posn-x-lens posn345 -) (posn3 -3 4 5))
+  #;(check-equal? (lens-set posn3-x-lens posn345 1) (posn3 1 4 5))
+  #;(check-equal? (lens-modify posn3-x-lens posn345 -) (posn3 -3 4 5)))
+
 ; --- core compiler ---
 
 (define-syntax update
@@ -133,7 +165,7 @@ for multi-clause, you'll want to make sure the mutation is isolated to each clau
   (syntax-parser
     [(_ target-var:id pat lens-so-far-var:id body)
      (syntax-parse #'pat
-       #:datum-literals (cons list _)
+       #:datum-literals (cons list struct-field _)
        [(cons car-pat cdr-pat)
         #'(if (cons? target-var)
               (let ([car-val (car target-var)]
@@ -147,8 +179,21 @@ for multi-clause, you'll want to make sure the mutation is isolated to each clau
        [(list) #'(update* target-var _ lens-so-far body)]
        [(list pat0 pat ...)
         #'(update* target-var (cons pat0 (list pat ...)) lens-so-far-var body)]
+       [(struct-field struct-name:id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
+        (define/syntax-parse struct-name? (get-struct-pred-id #'struct-name))
+        #'(if (struct-name? target-var)
+              (let* ([field-lens (struct-lens struct-name field-name)]
+                     [field-value (lens-get field-lens target-var)]
+                     [new-lens (lens-compose lens-so-far-var field-lens)])
+                (update* field-value field-pat new-lens body))
+              (error 'update "expected a ~a, got ~a" 'struct-name? target-var))]
        [_ #'body]
        [var:id #'(let ([var lens-so-far-var]) body)])]))
+
+(define-for-syntax (get-struct-pred-id struct-id-stx)
+  (syntax-parse struct-id-stx
+    [s:struct-id
+     (attribute s.predicate-id)]))
 
 (module+ test
   (check-equal? (update (list 1 2) [(cons a (cons b _)) (set a #t) (set b #f)])
@@ -161,4 +206,7 @@ for multi-clause, you'll want to make sure the mutation is isolated to each clau
                          (set b (get a))
                          (define x (get c))
                          (set c (add1 x))])
-                (list 1 1 10)))
+                (list 1 1 10))
+  (check-equal? (update (posn 1 2) [(struct-field posn x a) (set a 3)]) (posn 3 2))
+  (check-equal? (update (posn 1 2) [(struct-field posn x) (set x 3)]) (posn 3 2))
+  (check-equal? (update (posn (cons 1 2) 3) [(struct-field posn x (cons a b)) (modify a -) (modify b sqr)]) (posn (cons -1 4) 3)))
