@@ -31,6 +31,6 @@
   ((traversal-map t) proc target))
 
 (module+ test
-  (check-equal? (traversal-modify list-map-traversal '(1 2 3) add1)))
+  (check-equal? (traversal-modify list-map-traversal '(1 2 3) add1) '(2 3 4)))
 
 (module+ test)
