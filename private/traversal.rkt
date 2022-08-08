@@ -14,7 +14,7 @@
  #;(define list-map-traversal (make-traversal map identity))
  make-traversal
  ; traversal that focuses on all elements of a list
- list-map-traversal
+ list-traversal
  #;(-> traversal? target/c (-> focus/c focus/c) target/c)
  ; apply a procedure to each focus and return the updated target
  traversal-modify
@@ -42,18 +42,18 @@
      ((make-traversal-foldl t) proc init target))])
 
 ; traversal that focuses on all elements of a list
-(define list-map-traversal (make-traversal map foldl))
+(define list-traversal (make-traversal map foldl))
 
 ; traversal that focuses on all elements of a vector
-(define vector-map-traversal (make-traversal vector-map
+(define vector-traversal (make-traversal vector-map
                                              (λ (proc init v) (for/fold ([acc init]) ([ele v]) (proc ele acc)))))
 
 ; traversal that focuses on the target itself
 (define identity-traversal (make-traversal (λ (proc v) (proc v)) (λ (proc init v) (proc v init))))
 
 (module+ test
-  (check-equal? (traversal-modify list-map-traversal '(1 2 3) add1) '(2 3 4))
-  (check-equal? (traversal-foldl list-map-traversal '(1 2 3) cons '()) '(3 2 1))
+  (check-equal? (traversal-modify list-traversal '(1 2 3) add1) '(2 3 4))
+  (check-equal? (traversal-foldl list-traversal '(1 2 3) cons '()) '(3 2 1))
   (check-equal? (traversal-modify identity-traversal 1 add1) 2)
   (check-equal? (traversal-foldl identity-traversal 1 cons '()) '(1)))
 
@@ -74,7 +74,7 @@
                                      init))))
 
 (module+ test
-  (define lov-traversal (traversal-compose2 list-map-traversal vector-map-traversal))
+  (define lov-traversal (traversal-compose2 list-traversal vector-traversal))
   (check-equal? (traversal-modify lov-traversal '(#(1) #(2 3)) add1) '(#(2) #(3 4)))
   (check-equal? (traversal-foldl lov-traversal '(#(1) #(2 3)) cons '()) '(3 2 1)))
 
@@ -84,7 +84,7 @@
   (foldr traversal-compose2 identity-traversal traversals))
 
 (module+ test
-  (check-equal? (traversal-modify (traversal-compose list-map-traversal vector-map-traversal)
+  (check-equal? (traversal-modify (traversal-compose list-traversal vector-traversal)
                                   '(#(1))
                                   add1)
                 '(#(2))))
@@ -92,6 +92,6 @@
 
 
 (module+ test
-  (define lolol-traversal (traversal-compose list-map-traversal list-map-traversal list-map-traversal))
+  (define lolol-traversal (traversal-compose list-traversal list-traversal list-traversal))
   (define lolol '(((1 2) (3)) ((4)) () (()())))
   (check-equal? (traversal-modify lolol-traversal lolol add1) '(((2 3) (4)) ((5)) () (()()))))
