@@ -1,9 +1,75 @@
 #lang racket
 
-(require (for-syntax syntax/parse syntax/parse/class/struct-id))
+#|
+A lens is a first-class getter and setter for a part of a structure.
+For example:
+
+>(lens-get car-lens (cons 1 2))
+1
+>(lens-set car-lens (cons 1 2) 3)
+(cons 3 2)
+
+In the example of car-lens, a cons pair is the lens' target, and its car is the lens' focus.
+The setter doesn't mutate the target. It returns a copy with the focus changed.
+A lens can have a focus deep within its target. Lenses can be composed, or "chained" to create
+lenses which operate deeply within a structure.
+For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's x-coordinate.
+|#
+
 (module+ test (require rackunit))
 
-(provide (all-defined-out))
+(provide
+ #;(-> any/c boolean?)
+ ; lens predicate
+ lens?
+ #;(make-lens getter setter)
+ #;(-> (-> target/c focus/c) (-> target/c focus/c target/c) lens?)
+ ; (getter target) retrieves the focus from the target
+ ; (setter target new-focus) returns a copy of the target with the old focus replaced by the new one
+ make-lens
+ #;(-> lens? target/c focus/c)
+ ; get the focus
+ lens-get
+ #;(-> lens? target/c focus/c target/c)
+ ; set the focus
+ lens-set
+ #;(-> lens? target/c (-> focus/c focus/c) target/c)
+ ; apply a function to the focus
+ lens-modify
+ #;(-> lens? ... lens?)
+ ; compose lenses where the first lens is shallow and the last is deep
+ ; for example, (lens-compose circle-center-lens posn-x-lens) focuses on
+ ; the x-coordinate of the center of a circle
+ lens-compose
+ #;lens?
+ ; focus is the same as the target. setting the focus replaces the target.
+ ; identity of lens composition
+ identity-lens
+ #;lens?
+ ; focuses on the car of a cons pair
+ car-lens
+ #;lens?
+ cdr-lens
+ #;lens?
+ caar-lens
+ #;lens?
+ cadr-lens
+ #;lens?
+ cdar-lens
+ #;lens?
+ cddr-lens
+ #;(struct-lens struct-name:struct-id field-name:id)
+ #;(struct-lens struct-name:struct-id field-name:id #:parent parent-struct-name:struct-id)
+ ; creates a lens that focuses on a field of a struct.
+ ; for fields that are part of a super type, supply #:parent.
+ ; NOTE: if you use a super-type's lens to update a subtype, you will get an instance of the super-type, not the sub-type.
+ struct-lens)
+
+
+
+(require (for-syntax syntax/parse syntax/parse/class/struct-id))
+
+
 
 (struct lens (getter setter) #:constructor-name make-lens)
 ; (get target) retrieves the focus from the target
@@ -11,23 +77,23 @@
 ; (-> set target new-focus) sets the focus in the target
 #;(-> any/c any/c any/c)
 
-(define (lens-get lens target) ((lens-getter lens) target))
-(define (lens-set lens target focus) ((lens-setter lens) target focus))
-
-#; (-> lens? any/c (-> any/c any/c) any/c)
-; applies func to focus and updates target
-(define (lens-modify lens target func) (lens-set lens target (func (lens-get lens target))))
-
-#; lens?
-; identity of lens composition. get returns the target, set replaces the target
-(define identity-lens (make-lens identity (λ (target focus) focus)))
-
 #; lens?
 ; lens targeting a cons and focusing on the car
 (define car-lens (make-lens car (λ (pair a) (cons a (cdr pair)))))
 #; lens?
 ; lens targeting a cons and focusing on the cdr
 (define cdr-lens (make-lens cdr (λ (pair d) (cons (car pair) d))))
+#; lens?
+; identity of lens composition. get returns the target, set replaces the target
+(define identity-lens (make-lens identity (λ (target focus) focus)))
+
+
+
+(define (lens-get lens target) ((lens-getter lens) target))
+(define (lens-set lens target focus) ((lens-setter lens) target focus))
+#; (-> lens? any/c (-> any/c any/c) any/c)
+; applies func to focus and updates target
+(define (lens-modify lens target func) (lens-set lens target (func (lens-get lens target))))
 
 (module+ test
   (check-equal? (lens-get car-lens (cons 1 2)) 1)
@@ -85,11 +151,12 @@
 (module+ test
   (struct posn [x y] #:transparent)
   (define posn-x-lens (struct-lens posn x))
-  (define posn-y-lens (struct-lens posn y))
   (define posn34 (posn 3 4))
   (check-equal? (lens-get posn-x-lens posn34) 3)
   (check-equal? (lens-set posn-x-lens posn34 5) (posn 5 4))
-  (check-equal? (lens-modify posn-x-lens posn34 -) (posn -3 4))
+  (check-equal? (lens-modify posn-x-lens posn34 -) (posn -3 4)))
+
+(module+ test
   (struct posn3 posn [z] #:transparent)
   (define posn3-z-lens (struct-lens posn3 z))
   (define posn3-x-lens (struct-lens posn3 x #:parent posn))
