@@ -18,19 +18,28 @@
  #;(-> traversal? target/c (-> focus/c focus/c) target/c)
  ; apply a procedure to each focus and return the updated target
  traversal-modify
- #;(-> traversal? target/c (sequence/c focus/c))
- ; return a sequence of all foci
- traversal->sequence)
+ #;(-> traversal? target/c (-> focus/c any/c any/c) any/c any/c)
+ ; foldl over the target's foci. Unlike list foldl, the target comes first to conform to the library's convention
+ traversal-foldl
+ ; compose traversals. deepest traversal last.
+ traversal-compose)
+
+
 
 (require)
 
-(struct traversal (map to-sequence) #:constructor-name make-traversal)
+
+; fold is called fold so it doesn't conflict with traversal-foldl
+(struct traversal (map fold) #:constructor-name make-traversal)
 
 ; traversal that focuses on all elements of a list
-(define list-map-traversal (make-traversal map identity))
+(define list-map-traversal (make-traversal map foldl))
 
 ; traversal that focuses on all elements of a vector
-(define vector-map-traversal (make-traversal vector-map identity))
+(define vector-map-traversal (make-traversal vector-map (λ (proc init v) (for/fold ([acc init]) ([ele v]) (proc ele acc)))))
+
+; traversal that focuses on the target itself
+(define identity-traversal (make-traversal (λ (proc v) (proc v)) (λ (proc init v) (proc init v))))
 
 ; apply proc to the foci of target under t
 (define (traversal-modify t target proc)
@@ -39,12 +48,13 @@
 (module+ test
   (check-equal? (traversal-modify list-map-traversal '(1 2 3) add1) '(2 3 4)))
 
-; return a sequence of all foci
-(define (traversal->sequence t target)
-  ((traversal-to-sequence t) target))
+; fold over the target's foci
+(define (traversal-foldl t target proc init)
+  ((traversal-fold t) proc init target))
 
 (module+ test
-  (check-equal? (traversal->sequence list-map-traversal '(1 2 3)) '(1 2 3)))
+  (check-equal? (traversal-foldl list-map-traversal '(1 2 3) cons '()) '(3 2 1)))
+
 
 #;(-> traversal? traversal? traversal?)
 ; compose two traversals
@@ -54,14 +64,27 @@
                                       outer-target
                                       (λ (inner-target)
                                         (traversal-modify inner-traversal inner-target inner-proc))))
-                  (λ (outer-target)
-                    (for*/stream ([inner-target (traversal->sequence outer-traversal outer-target)]
-                                  [inner-focus (traversal->sequence inner-traversal inner-target)])
-                      inner-focus))))
+                  (λ (proc init outer-target)
+                    (traversal-foldl outer-traversal outer-target
+                                     (λ (inner-target outer-acc)
+                                       (traversal-foldl inner-traversal inner-target proc outer-acc))
+                                     init))))
 
 (module+ test
   (define lov-traversal (traversal-compose2 list-map-traversal vector-map-traversal))
   (check-equal? (traversal-modify lov-traversal '(#(1) #(2 3)) add1) '(#(2) #(3 4)))
-  (check-equal? (sequence->list (traversal->sequence lov-traversal '(#(1) #(2 3)))) '(1 2 3)))
+  (check-equal? (traversal-foldl lov-traversal '(#(1) #(2 3)) cons '()) '(3 2 1)))
+
+#;(-> traversal? ... traversal?)
+; compose traversals
+(define (traversal-compose . traversals)
+  (foldr traversal-compose2 identity-traversal traversals))
+
+(module+ test
+  (check-equal? (traversal-modify (traversal-compose list-map-traversal vector-map-traversal)
+                                  '(#(1))
+                                  add1)
+                '(#(2))))
+
 
 (module+ test)
