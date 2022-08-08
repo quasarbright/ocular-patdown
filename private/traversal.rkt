@@ -26,34 +26,37 @@
 
 
 
-(require)
+(require racket/generic)
 
 
-; fold is called fold so it doesn't conflict with traversal-foldl
-(struct traversal (map fold) #:constructor-name make-traversal)
+
+(define-generics traversal
+  (traversal-modify traversal target proc)
+  (traversal-foldl traversal target proc init))
+
+(struct make-traversal (map foldl)
+  #:methods gen:traversal
+  [(define (traversal-modify t target proc)
+     ((make-traversal-map t) proc target))
+   (define (traversal-foldl t target proc init)
+     ((make-traversal-foldl t) proc init target))])
 
 ; traversal that focuses on all elements of a list
 (define list-map-traversal (make-traversal map foldl))
 
 ; traversal that focuses on all elements of a vector
-(define vector-map-traversal (make-traversal vector-map (λ (proc init v) (for/fold ([acc init]) ([ele v]) (proc ele acc)))))
+(define vector-map-traversal (make-traversal vector-map
+                                             (λ (proc init v) (for/fold ([acc init]) ([ele v]) (proc ele acc)))))
 
 ; traversal that focuses on the target itself
-(define identity-traversal (make-traversal (λ (proc v) (proc v)) (λ (proc init v) (proc init v))))
-
-; apply proc to the foci of target under t
-(define (traversal-modify t target proc)
-  ((traversal-map t) proc target))
+(define identity-traversal (make-traversal (λ (proc v) (proc v)) (λ (proc init v) (proc v init))))
 
 (module+ test
-  (check-equal? (traversal-modify list-map-traversal '(1 2 3) add1) '(2 3 4)))
+  (check-equal? (traversal-modify list-map-traversal '(1 2 3) add1) '(2 3 4))
+  (check-equal? (traversal-foldl list-map-traversal '(1 2 3) cons '()) '(3 2 1))
+  (check-equal? (traversal-modify identity-traversal 1 add1) 2)
+  (check-equal? (traversal-foldl identity-traversal 1 cons '()) '(1)))
 
-; fold over the target's foci
-(define (traversal-foldl t target proc init)
-  ((traversal-fold t) proc init target))
-
-(module+ test
-  (check-equal? (traversal-foldl list-map-traversal '(1 2 3) cons '()) '(3 2 1)))
 
 
 #;(-> traversal? traversal? traversal?)
@@ -87,4 +90,8 @@
                 '(#(2))))
 
 
-(module+ test)
+
+(module+ test
+  (define lolol-traversal (traversal-compose list-map-traversal list-map-traversal list-map-traversal))
+  (define lolol '(((1 2) (3)) ((4)) () (()())))
+  (check-equal? (traversal-modify lolol-traversal lolol add1) '(((2 3) (4)) ((5)) () (()()))))
