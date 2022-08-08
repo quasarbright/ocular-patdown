@@ -11,7 +11,7 @@
  ; The order of arguments goes against the convention of the lens library, but matches the convention of
  ; map to make the creation of traversals easier.
  ; example:
- #;(define list-map-traversal (make-traversal map identity))
+ #;(define list-map-traversal (make-traversal map foldl))
  make-traversal
  ; traversal that focuses on all elements of a list
  list-traversal

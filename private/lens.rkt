@@ -67,15 +67,24 @@ For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's
 
 
 
-(require (for-syntax syntax/parse syntax/parse/class/struct-id))
+(require (for-syntax syntax/parse syntax/parse/class/struct-id)
+         racket/generic)
 
 
 
-(struct lens (getter setter) #:constructor-name make-lens)
-; (get target) retrieves the focus from the target
-#;(-> any/c any/c)
-; (-> set target new-focus) sets the focus in the target
-#;(-> any/c any/c any/c)
+(define-generics lens
+  (lens-get lens target)
+  (lens-set lens target focus))
+
+(struct make-lens (getter setter)
+  #:methods gen:lens
+  [(define (lens-get lens target) ((make-lens-getter lens) target))
+   (define (lens-set lens target focus)
+     ((make-lens-setter lens) target focus))])
+; (getter target) retrieves the focus from the target
+#;(-> target/c focus/c)
+; (setter target new-focus) sets the focus in the target
+#;(-> target/c focus/c target/c)
 
 #; lens?
 ; lens targeting a cons and focusing on the car
@@ -89,8 +98,6 @@ For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's
 
 
 
-(define (lens-get lens target) ((lens-getter lens) target))
-(define (lens-set lens target focus) ((lens-setter lens) target focus))
 #; (-> lens? any/c (-> any/c any/c) any/c)
 ; applies func to focus and updates target
 (define (lens-modify lens target func) (lens-set lens target (func (lens-get lens target))))
