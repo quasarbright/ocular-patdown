@@ -19,6 +19,8 @@ For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's
 (module+ test (require rackunit))
 
 (provide
+ ; generic interface for lens
+ gen:lens
  #;(-> any/c boolean?)
  ; lens predicate
  lens?
@@ -35,6 +37,7 @@ For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's
  lens-set
  #;(-> lens? target/c (-> focus/c focus/c) target/c)
  ; apply a function to the focus
+ ; alias for traversal-modify
  lens-modify
  #;(-> lens? ... lens?)
  ; compose lenses where the first lens is shallow and the last is deep
@@ -68,7 +71,8 @@ For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's
 
 
 (require (for-syntax syntax/parse syntax/parse/class/struct-id)
-         racket/generic)
+         racket/generic
+         "./traversal.rkt")
 
 
 
@@ -80,7 +84,12 @@ For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's
   #:methods gen:lens
   [(define (lens-get lens target) ((make-lens-getter lens) target))
    (define (lens-set lens target focus)
-     ((make-lens-setter lens) target focus))])
+     ((make-lens-setter lens) target focus))]
+  #:methods gen:traversal
+  [(define (traversal-modify lens target proc)
+     (lens-set lens target (proc (lens-get lens target))))
+   (define (traversal-fold lens target proc init)
+     (proc (lens-get lens target) init))])
 ; (getter target) retrieves the focus from the target
 #;(-> target/c focus/c)
 ; (setter target new-focus) sets the focus in the target
@@ -100,14 +109,16 @@ For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's
 
 #; (-> lens? any/c (-> any/c any/c) any/c)
 ; applies func to focus and updates target
-(define (lens-modify lens target func) (lens-set lens target (func (lens-get lens target))))
+; alias for traversal-modify
+(define lens-modify traversal-modify)
 
 (module+ test
   (check-equal? (lens-get car-lens (cons 1 2)) 1)
   (check-equal? (lens-get cdr-lens (cons 1 2)) 2)
   (check-equal? (lens-set car-lens (cons 1 2) 3) (cons 3 2))
   (check-equal? (lens-set cdr-lens (cons 1 2) 3) (cons 1 3))
-  (check-equal? (lens-modify car-lens (cons 1 2) -) (cons -1 2)))
+  (check-equal? (lens-modify car-lens (cons 1 2) -) (cons -1 2))
+  (check-equal? (traversal? car-lens) #t))
 
 #; (-> lens? lens? lens?)
 ; composes two lenses. outer-lens' focus should be inner-lens' target.

@@ -3,6 +3,9 @@
 (module+ test (require rackunit))
 
 (provide
+ ; generic interface for traversal
+ gen:traversal
+ ; traversal predicate
  traversal?
  #;(-> (-> (-> focus/c focus/c) target/c target/c)
        (-> target/c (sequence/c focus/c))
@@ -21,7 +24,7 @@
  #;(-> traversal? target/c (-> focus/c any/c any/c) any/c any/c)
  ; foldl over the target's foci. Unlike list foldl, the target comes first to conform to the library's convention
  traversal-foldl
- ; compose traversals. deepest traversal last.
+ ; compose traversals. deepest/innermost traversal last.
  traversal-compose)
 
 
