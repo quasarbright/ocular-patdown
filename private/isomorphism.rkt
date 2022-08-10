@@ -64,7 +64,8 @@ iso-modify handles the conversions so you can focus on the interesting stuff.
 
 (require racket/generic
          "./traversal.rkt"
-         "./lens.rkt")
+         "./lens.rkt"
+         "./prism.rkt")
 
 
 
@@ -81,6 +82,9 @@ iso-modify handles the conversions so you can focus on the interesting stuff.
      (iso-forward iso target))
    (define (lens-set iso target focus)
      (iso-backward iso focus))]
+  #:methods gen:prism
+  [(define (prism-project iso target [_ #f]) (iso-forward iso target))
+   (define (prism-inject iso focus) (iso-backward iso focus))]
   #:methods gen:traversal
   [(define (traversal-modify iso target proc)
      (iso-backward iso (proc (iso-forward iso target))))
@@ -97,7 +101,7 @@ iso-modify handles the conversions so you can focus on the interesting stuff.
   (check-equal? (iso-forward list<->vector '((1))) (vector (list 1)))
   (check-equal? (iso-forward identity-iso 1) 1)
   (check-equal? (iso-backward identity-iso 1) 1)
-  (check-equal? (lens? list<->vector) #t)
+  (check-pred (conjoin iso? lens? prism? traversal?) list<->vector)
   (check-equal? (traversal? list<->vector) #t))
 
 (define iso-modify traversal-modify)

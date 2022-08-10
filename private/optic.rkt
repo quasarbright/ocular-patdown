@@ -13,7 +13,7 @@
 
 
 
-(require "./lens.rkt" "./isomorphism.rkt" "./traversal.rkt")
+(require "./lens.rkt" "./isomorphism.rkt" "./traversal.rkt" "./prism.rkt")
 
 
 
@@ -21,7 +21,9 @@
 
 (define (optic-compose . optics)
   (cond
+    ; this needs to be a topological ordering on the subtype graph with subtypes before their supertypes
     [(andmap iso? optics) (apply iso-compose optics)]
+    [(andmap prism? optics) (apply prism-compose optics)]
     [(andmap lens? optics) (apply lens-compose optics)]
     [(andmap traversal? optics) (apply traversal-compose optics)]))
 
@@ -32,7 +34,10 @@
   (check-equal? (traversal-modify (optic-compose list-traversal symbol<->string)
                                   '(foo bar)
                                   string-upcase)
-                '(FOO BAR)))
+                '(FOO BAR))
+  (check-equal? (prism-project (optic-compose symbol<->string string-number-prism) '|1|) 1)
+  (check-equal? (prism-project (optic-compose symbol<->string string-number-prism) 'foo) (prism-absent))
+  (check-equal? (prism-inject (optic-compose symbol<->string string-number-prism) 2) '|2|))
 
 (define optic-get lens-get)
 (define optic-set lens-set)
