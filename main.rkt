@@ -1,8 +1,13 @@
 #lang racket
 
 (require (for-syntax syntax/parse syntax/parse/class/struct-id))
-(require "./private/lens.rkt")
+(require "./private/lens.rkt"
+         "./private/traversal.rkt"
+         "./private/isomorphism.rkt"
+         "./private/optic.rkt")
 (module+ test (require rackunit))
+
+(provide (all-defined-out))
 
 #|
 ; happy birthday dad!
@@ -53,44 +58,51 @@ for multi-clause, you'll want to make sure the mutation is isolated to each clau
      (with-syntax
        ([get (syntax-local-introduce #'get)]
         [set (syntax-local-introduce #'set)]
-        [modify (syntax-local-introduce #'modify)])
+        [modify (syntax-local-introduce #'modify)]
+        [fold (syntax-local-introduce #'fold)])
        #'(let () ; this is used to create a definition context
            ; for multi-clause, make sure you isolate the mutations within each clause
            (define target-var target-expr)
-           (define (get lens) (lens-get lens target-var))
-           (define (set lens focus) (set! target-var (lens-set lens target-var focus)))
-           (define (modify lens func) (set! target-var (lens-modify lens target-var func)))
-           (update* target-var pat identity-lens (begin body ... target-var))))]))
+           (define (get optic) (optic-get optic target-var))
+           (define (set optic focus) (set! target-var (optic-set optic target-var focus)))
+           (define (modify optic func) (set! target-var (traversal-modify optic target-var func)))
+           (define (fold traversal proc init) (traversal-foldl traversal target-var proc init))
+           (update* target-var pat identity-iso (begin body ... target-var))))]))
 
-; compile the patterns to nested bindings of variables to lenses
+; compile the patterns to nested bindings of variables to optics
 (define-syntax update*
   (syntax-parser
-    [(_ target-var:id pat lens-so-far-var:id body)
+    [(_ target-var:id pat optic-so-far-var:id body)
      (syntax-parse #'pat
-       #:datum-literals (cons list struct-field _)
+       #:datum-literals (cons list list-of struct-field _)
        [(cons car-pat cdr-pat)
         #'(if (cons? target-var)
               (let ([car-val (car target-var)]
                     [cdr-val (cdr target-var)]
-                    [lens-with-car (lens-compose lens-so-far-var car-lens)]
-                    [lens-with-cdr (lens-compose lens-so-far-var cdr-lens)])
+                    [lens-with-car (optic-compose optic-so-far-var car-lens)]
+                    [lens-with-cdr (optic-compose optic-so-far-var cdr-lens)])
                 (update* car-val car-pat lens-with-car
                          (update* cdr-val cdr-pat lens-with-cdr
                                   body)))
               (error 'update "expected a cons, got ~a" target-var))]
-       [(list) #'(update* target-var _ lens-so-far body)]
+       [(list) #'(update* target-var _ optic-so-far body)]
        [(list pat0 pat ...)
-        #'(update* target-var (cons pat0 (list pat ...)) lens-so-far-var body)]
+        #'(update* target-var (cons pat0 (list pat ...)) optic-so-far-var body)]
+       [(list-of pat)
+        #'(if (list? target-var)
+              (let ([new-optic (traversal-compose optic-so-far-var list-traversal)])
+                (update* target-var pat new-optic body))
+              (error 'update "expected a cons, got ~a" target-var))]
        [(struct-field struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
         (define/syntax-parse struct-name? (get-struct-pred-id #'struct-name))
         #'(if (struct-name? target-var)
               (let* ([field-lens (struct-lens struct-name field-name)]
                      [field-value (lens-get field-lens target-var)]
-                     [new-lens (lens-compose lens-so-far-var field-lens)])
-                (update* field-value field-pat new-lens body))
+                     [new-optic (optic-compose optic-so-far-var field-lens)])
+                (update* field-value field-pat new-optic body))
               (error 'update "expected a ~a, got ~a" 'struct-name? target-var))]
        [_ #'body]
-       [var:id #'(let ([var lens-so-far-var]) body)])]))
+       [var:id #'(let ([var optic-so-far-var]) body)])]))
 
 (define-for-syntax (get-struct-pred-id struct-id-stx)
   (syntax-parse struct-id-stx
@@ -112,4 +124,8 @@ for multi-clause, you'll want to make sure the mutation is isolated to each clau
   (struct posn [x y] #:transparent)
   (check-equal? (update (posn 1 2) [(struct-field posn x a) (set a 3)]) (posn 3 2))
   (check-equal? (update (posn 1 2) [(struct-field posn x) (set x 3)]) (posn 3 2))
-  (check-equal? (update (posn (cons 1 2) 3) [(struct-field posn x (cons a b)) (modify a -) (modify b sqr)]) (posn (cons -1 4) 3)))
+  (check-equal? (update (posn (cons 1 2) 3) [(struct-field posn x (cons a b)) (modify a -) (modify b sqr)]) (posn (cons -1 4) 3))
+  (check-equal? (update (list 1 2) [(list a b) (modify a -) (set b #t)]) (list -1 #t))
+  (check-equal? (update (list 1 2 3 4) [(list-of a) (modify a -)]) '(-1 -2 -3 -4))
+  (check-equal? (update '((1 2) (3 4) (5 6)) [(list-of (list a _)) (modify a -)]) '((-1 2) (-3 4) (-5 6)))
+  (check-equal? (update '(((1 2) (3)) ((4) ())) [(list-of (list-of (list-of a))) (modify a -)]) '(((-1 -2) (-3)) ((-4) ()))))
