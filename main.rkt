@@ -93,10 +93,16 @@ value. The user has first-class access to the optics, their foci, and can use th
      (attribute s.predicate-id)]))
 
 (module+ test
-  (check-equal? (update (list 1 2) [(cons a (cons b _)) (set a #t) (set b #f)])
-                (list #t #f))
+  ; you can set values
   (check-equal? (update (list 1 2) [(list a b) (set a #t) (set b #f)])
                 (list #t #f))
+  ; you can apply functions to modify values
+  (check-equal? (update (list 1 2) [(list a b) (modify b add1)])
+                '(1 3))
+  ; you can nest patterns to perform deep updates
+  (check-equal? (update '(1 (2 3)) [(list a (list b c)) (set c #t)])
+                '(1 (2 #t)))
+  ; get, set, etc. are procedures and can be used in any expression position inside of an update form
   (check-equal? (update (list 7 8 9)
                         [(list a b c)
                          (set a 1)
@@ -104,16 +110,27 @@ value. The user has first-class access to the optics, their foci, and can use th
                          (define x (get c))
                          (set c (add1 x))])
                 (list 1 1 10))
+  ; struct pattern
   (struct posn [x y] #:transparent)
   (check-equal? (update (posn 1 2) [(struct-field posn x a) (set a 3)]) (posn 3 2))
+  ; without a pattern after the field name, the field's optic is bound to the name of the field
   (check-equal? (update (posn 1 2) [(struct-field posn x) (set x 3)]) (posn 3 2))
-  (check-equal? (update (posn (cons 1 2) 3) [(struct-field posn x (cons a b)) (modify a -) (modify b sqr)]) (posn (cons -1 4) 3))
-  (check-equal? (update (list 1 2) [(list a b) (modify a -) (set b #t)]) (list -1 #t))
+  ; list-of pattern creates a traversal which can modify all elements
   (check-equal? (update (list 1 2 3 4) [(list-of a) (modify a -)]) '(-1 -2 -3 -4))
+  ; if the last expression of the body is a get, its value is returned
+  (check-equal? (update '(1 2) [(list a b) (get a)]) 1)
+  ; you can access the optic directly
+  (check-pred lens? (update '(1 2) [(list a b) a])))
+
+
+
+(module+ test
+  (check-equal? (update (list 1 2) [(cons a (cons b _)) (set a #t) (set b #f)])
+                (list #t #f))
+  (check-equal? (update (list 1 2) [(list a b) (modify a -) (set b #t)]) (list -1 #t))
+  (check-equal? (update (posn (cons 1 2) 3) [(struct-field posn x (cons a b)) (modify a -) (modify b sqr)]) (posn (cons -1 4) 3))
   (check-equal? (update '((1 2) (3 4) (5 6)) [(list-of (list a _)) (modify a -)]) '((-1 2) (-3 4) (-5 6)))
   (check-equal? (update '(((1 2) (3)) ((4) ())) [(list-of (list-of (list-of a))) (modify a -)]) '(((-1 -2) (-3)) ((-4) ())))
-  (check-equal? (update '(1 2) [(list a b) (get a)]) 1)
-  (check-pred lens? (update '(1 2) [(list a b) a]))
   ; update in an update works
   (check-equal? (update '(1 (2 3)) [(list a b)
                                     (set b (update (get b) [(list c d) (set d 4)]))
