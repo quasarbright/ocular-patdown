@@ -17,92 +17,75 @@
 ; returns a copy of the same list, but dad's age is incremented
 
 going through the pattern binds optics to variable names
-executing the body should run the specified updates and return the updated target (no mutation)
-
-this could be achieved by making get, set, and modify curried functions that are closed over the target:
-(define (set lens value) (lens-set lens value target))
-
-in order to allow definitions in the body of the clause, (get ...) to return results that reflect recent modifications, and sets and modifications to work, you can make target a variable and set! it
-
-(update (list 7 8 9)
-  [(list a b c)
-   (set a 1)
-   (set b (get a))
-   (define x (get c))
-   (set c (add1 x))])
-> (list 1 1 10)
-
-in general, for single-clause:
-
-(define target ...the target)
-(define (set lens value) (set! target (lens-set lens value target)))
-(define (modify lens func) (set! target (lens-modify lens func target)))
-(define (get lens) (lens-get lens target))
-... define lenses for a,b,c
-... body
-target
-
-for multi-clause, you'll want to make sure the mutation is isolated to each clause in case mid-way failures are possible
+executing the body should run the specified updates.
+The body can have many forms, and get, set, modify, etc. are procedures.
+"mutator" procedures like 'set' actually mutate a reference to a copy of the target variable and return the new
+value. The user has first-class access to the optics, their foci, and can use them to procedurally update the target.
 |#
 
-; --- lenses ---
+
 
 ; --- core compiler ---
+
+
+
+; the scrutinee of the current update form.
+(define current-update-target (make-parameter #f #f 'current-update-target))
+; retrieve the focus of the current target under 'optic'
+(define (get optic) (optic-get optic (current-update-target)))
+; set the focus of the current target under 'optic'
+(define (set optic focus)
+  (current-update-target (optic-set optic (current-update-target) focus))
+  (current-update-target))
+; apply a function to update the focus of the current target under 'optic'
+(define (modify optic func)
+  (current-update-target (traversal-modify optic (current-update-target) func))
+  (current-update-target))
+; fold over the current target's foci under 'traversal'
+(define (fold traversal proc init) (traversal-foldl traversal (current-update-target) proc init))
 
 (define-syntax update
   (syntax-parser
     [(_ target-expr [pat body ...])
-     ;; (define/syntax-parse get (syntax-local-introduce #'get))
-     ;; (define/syntax-parse set (syntax-local-introduce #'set))
-     ;; (define/syntax-parse modify (syntax-local-introduce #'modify))
-     (with-syntax
-       ([get (syntax-local-introduce #'get)]
-        [set (syntax-local-introduce #'set)]
-        [modify (syntax-local-introduce #'modify)]
-        [fold (syntax-local-introduce #'fold)])
-       #'(let () ; this is used to create a definition context
-           ; for multi-clause, make sure you isolate the mutations within each clause
-           (define target-var target-expr)
-           (define (get optic) (optic-get optic target-var))
-           (define (set optic focus) (set! target-var (optic-set optic target-var focus)))
-           (define (modify optic func) (set! target-var (traversal-modify optic target-var func)))
-           (define (fold traversal proc init) (traversal-foldl traversal target-var proc init))
-           (update* target-var pat identity-iso (begin body ... target-var))))]))
+     #'(let ([target-var target-expr])
+         ; for multi-clause, make sure you re-parameterize each clause
+         (parameterize ([current-update-target target-var])
+           (update* target-var pat identity-iso (begin body ...))))]))
 
 ; compile the patterns to nested bindings of variables to optics
 (define-syntax update*
   (syntax-parser
-    [(_ target-var:id pat optic-so-far-var:id body)
+    [(_ current-val:id pat optic-so-far:id body)
      (syntax-parse #'pat
        #:datum-literals (cons list list-of struct-field _)
        [(cons car-pat cdr-pat)
-        #'(if (cons? target-var)
-              (let ([car-val (car target-var)]
-                    [cdr-val (cdr target-var)]
-                    [lens-with-car (optic-compose optic-so-far-var car-lens)]
-                    [lens-with-cdr (optic-compose optic-so-far-var cdr-lens)])
+        #'(if (cons? current-val)
+              (let ([car-val (car current-val)]
+                    [cdr-val (cdr current-val)]
+                    [lens-with-car (optic-compose optic-so-far car-lens)]
+                    [lens-with-cdr (optic-compose optic-so-far cdr-lens)])
                 (update* car-val car-pat lens-with-car
                          (update* cdr-val cdr-pat lens-with-cdr
                                   body)))
-              (error 'update "expected a cons, got ~a" target-var))]
-       [(list) #'(update* target-var _ optic-so-far body)]
+              (error 'update "expected a cons, got ~a" current-val))]
+       [(list) #'(update* current-val _ optic-so-far body)]
        [(list pat0 pat ...)
-        #'(update* target-var (cons pat0 (list pat ...)) optic-so-far-var body)]
+        #'(update* current-val (cons pat0 (list pat ...)) optic-so-far body)]
        [(list-of pat)
-        #'(if (list? target-var)
-              (let ([new-optic (traversal-compose optic-so-far-var list-traversal)])
-                (update* target-var pat new-optic body))
-              (error 'update "expected a cons, got ~a" target-var))]
+        #'(if (list? current-val)
+              (let ([new-optic (traversal-compose optic-so-far list-traversal)])
+                (update* current-val pat new-optic body))
+              (error 'update "expected a cons, got ~a" current-val))]
        [(struct-field struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
         (define/syntax-parse struct-name? (get-struct-pred-id #'struct-name))
-        #'(if (struct-name? target-var)
+        #'(if (struct-name? current-val)
               (let* ([field-lens (struct-lens struct-name field-name)]
-                     [field-value (lens-get field-lens target-var)]
-                     [new-optic (optic-compose optic-so-far-var field-lens)])
+                     [field-value (lens-get field-lens current-val)]
+                     [new-optic (optic-compose optic-so-far field-lens)])
                 (update* field-value field-pat new-optic body))
-              (error 'update "expected a ~a, got ~a" 'struct-name? target-var))]
+              (error 'update "expected a ~a, got ~a" 'struct-name? current-val))]
        [_ #'body]
-       [var:id #'(let ([var optic-so-far-var]) body)])]))
+       [var:id #'(let ([var optic-so-far]) body)])]))
 
 (define-for-syntax (get-struct-pred-id struct-id-stx)
   (syntax-parse struct-id-stx
@@ -128,4 +111,11 @@ for multi-clause, you'll want to make sure the mutation is isolated to each clau
   (check-equal? (update (list 1 2) [(list a b) (modify a -) (set b #t)]) (list -1 #t))
   (check-equal? (update (list 1 2 3 4) [(list-of a) (modify a -)]) '(-1 -2 -3 -4))
   (check-equal? (update '((1 2) (3 4) (5 6)) [(list-of (list a _)) (modify a -)]) '((-1 2) (-3 4) (-5 6)))
-  (check-equal? (update '(((1 2) (3)) ((4) ())) [(list-of (list-of (list-of a))) (modify a -)]) '(((-1 -2) (-3)) ((-4) ()))))
+  (check-equal? (update '(((1 2) (3)) ((4) ())) [(list-of (list-of (list-of a))) (modify a -)]) '(((-1 -2) (-3)) ((-4) ())))
+  (check-equal? (update '(1 2) [(list a b) (get a)]) 1)
+  (check-pred lens? (update '(1 2) [(list a b) a]))
+  ; update in an update works
+  (check-equal? (update '(1 (2 3)) [(list a b)
+                                    (set b (update (get b) [(list c d) (set d 4)]))
+                                    (set a #t)])
+                '(#t (2 4))))
