@@ -7,7 +7,24 @@
          "./private/optic.rkt")
 (module+ test (require rackunit))
 
-(provide (all-defined-out))
+(provide
+ #;(update expr [pattern body ...+])
+ ; like match, but can also be used for immutably updating values.
+ ; Use get, set, modify, etc. on pattern-bound variables.
+ ; Under the hood, variables are bound to optics like lenses and traversals
+ update
+ #;(-> lens? any/c)
+ ; get the value
+ get
+ #;(-> lens? any/c any/c)
+ ; set the value
+ set
+ #;(-> lens? (-> any/c any/c) any/c)
+ ; apply a function to update the value(s)
+ modify
+ #;(-> lens? (-> A B B) B B)
+ ; foldl over the values
+ fold)
 
 #|
 ; happy birthday dad!
@@ -117,6 +134,9 @@ value. The user has first-class access to the optics, their foci, and can use th
   (check-equal? (update (posn 1 2) [(struct-field posn x) (set x 3)]) (posn 3 2))
   ; list-of pattern creates a traversal which can modify all elements
   (check-equal? (update (list 1 2 3 4) [(list-of a) (modify a -)]) '(-1 -2 -3 -4))
+  ; you can fold(l) the elements of a traversal
+  (check-equal? (update (list 1 2 3) [(list-of a) (fold a cons '())])
+                (list 3 2 1))
   ; if the last expression of the body is a get, its value is returned
   (check-equal? (update '(1 2) [(list a b) (get a)]) 1)
   ; you can access the optic directly
