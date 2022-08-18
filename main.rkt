@@ -74,7 +74,7 @@ value. The user has first-class access to the optics, their foci, and can use th
   (syntax-parser
     [(_ current-val:id pat optic-so-far:id body)
      (syntax-parse #'pat
-       #:datum-literals (cons list list-of struct-field _)
+       #:datum-literals (cons list list-of struct-field iso _)
        [(cons car-pat cdr-pat)
         #'(if (cons? current-val)
               (let ([car-val (car current-val)]
@@ -101,6 +101,10 @@ value. The user has first-class access to the optics, their foci, and can use th
                      [new-optic (optic-compose optic-so-far field-lens)])
                 (update* field-value field-pat new-optic body))
               (error 'update "expected a ~a, got ~a" 'struct-name? current-val))]
+       [(iso forward backward pat)
+        #'(let* ([iso (make-iso forward backward)]
+                 [new-optic (optic-compose optic-so-far iso)])
+            (update* current-val pat new-optic body))]
        [_ #'body]
        [var:id #'(let ([var optic-so-far]) body)])]))
 
@@ -140,7 +144,10 @@ value. The user has first-class access to the optics, their foci, and can use th
   ; if the last expression of the body is a get, its value is returned
   (check-equal? (update '(1 2) [(list a b) (get a)]) 1)
   ; you can access the optic directly
-  (check-pred lens? (update '(1 2) [(list a b) a])))
+  (check-pred lens? (update '(1 2) [(list a b) a]))
+  (test-equal? "can use iso to treat an X as a Y"
+               (update 'foo [(iso symbol->string string->symbol str) (modify str string-upcase)])
+               'FOO))
 
 
 
@@ -155,4 +162,7 @@ value. The user has first-class access to the optics, their foci, and can use th
   (check-equal? (update '(1 (2 3)) [(list a b)
                                     (set b (update (get b) [(list c d) (set d 4)]))
                                     (set a #t)])
-                '(#t (2 4))))
+                '(#t (2 4)))
+  (test-equal? "iso composes"
+               (update '(foo bar) [(cons (iso symbol->string string->symbol str) _) (modify str string-upcase)])
+               '(FOO bar)))
