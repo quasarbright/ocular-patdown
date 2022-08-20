@@ -4,7 +4,8 @@
 (require "./private/lens.rkt"
          "./private/traversal.rkt"
          "./private/isomorphism.rkt"
-         "./private/optic.rkt")
+         "./private/optic.rkt"
+         "./private/prism.rkt")
 (module+ test (require rackunit))
 
 (provide
@@ -46,7 +47,7 @@ value. The user has first-class access to the optics, their foci, and can use th
 
 
 
-; the scrutinee of the current update form.
+; the scrutinee of the current update form. Does not change as the update dives into the structure.
 (define current-update-target (make-parameter #f #f 'current-update-target))
 ; retrieve the focus of the current target under 'optic'
 (define (get optic) (optic-get optic (current-update-target)))
@@ -74,7 +75,7 @@ value. The user has first-class access to the optics, their foci, and can use th
   (syntax-parser
     [(_ current-val:id pat optic-so-far:id body)
      (syntax-parse #'pat
-       #:datum-literals (cons list list-of struct-field iso _)
+       #:datum-literals (cons list list-of struct-field iso optic and2 ? _)
        [(cons car-pat cdr-pat)
         #'(if (cons? current-val)
               (let ([car-val (car current-val)]
@@ -105,6 +106,15 @@ value. The user has first-class access to the optics, their foci, and can use th
         #'(let* ([iso (make-iso forward backward)]
                  [new-optic (optic-compose optic-so-far iso)])
             (update* current-val pat new-optic body))]
+       [(optic o pat)
+        #'(let ([new-optic (optic-compose optic-so-far o)])
+            (update* current-val pat new-optic body))]
+       [(and2 pat1 pat2)
+        #'(update* current-val pat1 optic-so-far (update* current-val pat2 optic-so-far body))]
+       [(? predicate (~optional (~seq #:description desc)))
+        #'(if (predicate current-val)
+              body
+              (error 'update (~? (~@ "expected a ~a, got ~a" desc current-val) "predicate check failed")))]
        [_ #'body]
        [var:id #'(let ([var optic-so-far]) body)])]))
 
@@ -147,7 +157,18 @@ value. The user has first-class access to the optics, their foci, and can use th
   (check-pred lens? (update '(1 2) [(list a b) a]))
   (test-equal? "can use iso to treat an X as a Y"
                (update 'foo [(iso symbol->string string->symbol str) (modify str string-upcase)])
-               'FOO))
+               'FOO)
+  (test-equal? "can specify an optic directly"
+               (update (list 1 2) [(optic list-traversal a) (modify a -)])
+               (list -1 -2))
+  (test-equal? "and pattern"
+               (update (list 1 2) [(and2 (list-of n) (list a b))
+                                   (modify n -)
+                                   (modify a number->string)])
+               (list "-1" -2))
+  (test-equal? "? pattern"
+               (update (list 1 2) [(list (and2 (? odd?) a) (? even?)) (modify a -)])
+               (list -1 2)))
 
 
 
@@ -158,8 +179,8 @@ value. The user has first-class access to the optics, their foci, and can use th
   (check-equal? (update (posn (cons 1 2) 3) [(struct-field posn x (cons a b)) (modify a -) (modify b sqr)]) (posn (cons -1 4) 3))
   (check-equal? (update '((1 2) (3 4) (5 6)) [(list-of (list a _)) (modify a -)]) '((-1 2) (-3 4) (-5 6)))
   (check-equal? (update '(((1 2) (3)) ((4) ())) [(list-of (list-of (list-of a))) (modify a -)]) '(((-1 -2) (-3)) ((-4) ())))
-  ; update in an update works
-  (check-equal? (update '(1 (2 3)) [(list a b)
+  (test-equal? "update in an update works"
+               (update '(1 (2 3)) [(list a b)
                                     (set b (update (get b) [(list c d) (set d 4)]))
                                     (set a #t)])
                 '(#t (2 4)))
