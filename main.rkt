@@ -186,4 +186,10 @@ value. The user has first-class access to the optics, their foci, and can use th
                 '(#t (2 4)))
   (test-equal? "iso composes"
                (update '(foo bar) [(cons (iso symbol->string string->symbol str) _) (modify str string-upcase)])
-               '(FOO bar)))
+               '(FOO bar))
+  ; regression test:
+  ; currently, the expanded code inserts structure checks and composes and binds optics.
+  ; this structure check is/was broken for list-of.
+  (test-equal? "list-of structs works"
+               (update (list (posn 1 2) (posn 3 4)) [(list-of (struct-field posn x)) (modify x -)])
+               (list (posn -1 2) (posn -3 4))))
