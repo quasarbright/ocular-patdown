@@ -25,7 +25,11 @@
  modify
  #;(-> lens? (-> A B B) B B)
  ; foldl over the values
- fold)
+ fold
+ ; a parameter for the current update target. useful for using optics with low-level functions. Ex:
+ #;(update (list 1 2) [(list a b) (optic-set a (current-update-target) 3)])
+ #;'(3 2)
+ current-update-target)
 
 #|
 ; happy birthday dad!
@@ -234,7 +238,10 @@ value. The user has first-class access to the optics, their foci, and can use th
                (update (list 1 2)
                        [(struct-field posn x) (set x 3)]
                        [(list a b) (set a 4)])
-               (list 4 2)))
+               (list 4 2))
+  (test-equal? "use current-update-target"
+               (update (list 1 2) [(list a b) (optic-set a (current-update-target) 3)])
+               '(3 2)))
 
 
 
