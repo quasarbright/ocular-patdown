@@ -26,9 +26,13 @@
  #;(-> lens? (-> A B B) B B)
  ; foldl over the values
  fold
- ; a parameter for the current update target. useful for using optics with low-level functions. Ex:
+ ; a parameter for the current update target. Gets updated by set, modify, etc.
+ ; Useful for using optics with low-level functions. Ex:
  #;(update (list 1 2) [(list a b) (optic-set a (current-update-target) 3)])
  #;'(3 2)
+ ; get, set, modify, etc. use this under the hood.
+ ; NOTE: When using this parameter, be careful when performing multiple updates. You must update the parameter
+ ; with its new value.
  current-update-target)
 
 #|
@@ -38,11 +42,10 @@
    (set dad-age (add1 (get dad-age))])
 ; returns a copy of the same list, but dad's age is incremented
 
-going through the pattern binds optics to variable names
-executing the body should run the specified updates.
-The body can have many forms, and get, set, modify, etc. are procedures.
-"mutator" procedures like 'set' actually mutate a reference to a copy of the target variable and return the new
-value. The user has first-class access to the optics, their foci, and can use them to procedurally update the target.
+going through the pattern binds optics to variable names.
+executing the body runs the specified updates.
+a reference to the current target is set to the target's new value when you perform an update.
+The user has first-class access to the optics, their foci, and can use them to procedurally update the target.
 |#
 
 
