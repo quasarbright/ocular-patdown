@@ -62,28 +62,30 @@ value. The user has first-class access to the optics, their foci, and can use th
 ; fold over the current target's foci under 'traversal'
 (define (fold traversal proc init) (traversal-foldl traversal (current-update-target) proc init))
 
+; like match, but supports immutable updates too
 (define-syntax update
   (syntax-parser
     [(_ target-expr [pat0 body0 ...] clause ...)
      #'(let ([target target-expr])
-         (parameterize ([current-update-target target])
-           (update* target pat0 (begin body0 ...) (update target clause ...))))]
+         (update* target pat0 (begin body0 ...) (update target clause ...)))]
     [(_ target-expr)
      #'(error 'update "no matching clauses")]))
 
-(begin-for-syntax
-  (define-literal-set pattern-literals
-    #:datum-literals (cons list list-of struct-field iso optic and2 ? _)
-    ()))
-
-; compile the patterns to nested bindings of variables to optics
 (define-syntax update*
   (syntax-parser
     [(_ target:id pat body on-fail)
      #'(let ([on-fail-proc (thunk on-fail)])
          (validate-target target pat
-                          (bind-optics identity-iso pat body)
+                          (bind-optics identity-iso pat
+                                       (parameterize ([current-update-target target])
+                                         body))
                           on-fail-proc))]))
+
+; compile the patterns to nested bindings of variables to optics
+(begin-for-syntax
+  (define-literal-set pattern-literals
+    #:datum-literals (cons list list-of struct-field iso optic and2 ? _)
+    ()))
 
 ; check if the pattern matches the target successfully
 ; this could currently just evaluate to a boolean, but in case things get weird in the future, it is more general
@@ -227,7 +229,12 @@ value. The user has first-class access to the optics, their foci, and can use th
                (list "-1" -2))
   (test-equal? "? pattern"
                (update (list 1 2) [(list (and2 (? odd?) a) (? even?)) (modify a -)])
-               (list -1 2)))
+               (list -1 2))
+  (test-equal? "multi-clause"
+               (update (list 1 2)
+                       [(struct-field posn x) (set x 3)]
+                       [(list a b) (set a 4)])
+               (list 4 2)))
 
 
 
@@ -248,6 +255,12 @@ value. The user has first-class access to the optics, their foci, and can use th
                '(FOO bar))
   ; regression test:
   ; structure check was broken for list-of. structure check only really worked for lenses.
+  ; it used to run the nested structure check on the list itself, not each element.
   (test-equal? "list-of structs works"
                (update (list (posn 1 2) (posn 3 4)) [(list-of (struct-field posn x)) (modify x -)])
-               (list (posn -1 2) (posn -3 4))))
+               (list (posn -1 2) (posn -3 4)))
+  (test-equal? "failure in a list-of"
+               (update (list 1 2 (posn 3 4))
+                       [(list-of (? number?)) 2]
+                       [_ 3])
+               3))
