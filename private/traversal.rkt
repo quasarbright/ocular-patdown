@@ -25,7 +25,10 @@
  ; foldl over the target's foci. Unlike list foldl, the target comes first to conform to the library's convention
  traversal-foldl
  ; compose traversals. deepest/innermost traversal last.
- traversal-compose)
+ traversal-compose
+ #;(-> traversal? target? (listof focus?))
+ ; get a list of all foci
+ traversal->list)
 
 
 
@@ -91,6 +94,16 @@
                                   '(#(1))
                                   add1)
                 '(#(2))))
+
+#;(-> traversal? target? (listof focus?))
+; get a list of all foci
+(define (traversal->list traversal target)
+  (reverse (traversal-foldl traversal target cons '())))
+
+(module+ test
+  (test-equal? "traversal->list"
+               (traversal->list (traversal-compose vector-traversal vector-traversal) #(#(1 2 3) #(4 5) #() #(6)))
+               '(1 2 3 4 5 6)))
 
 
 
