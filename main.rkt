@@ -64,64 +64,123 @@ value. The user has first-class access to the optics, their foci, and can use th
 
 (define-syntax update
   (syntax-parser
-    [(_ target-expr [pat body ...])
-     #'(let ([target-var target-expr])
-         ; for multi-clause, make sure you re-parameterize each clause
-         (parameterize ([current-update-target target-var])
-           (update* target-var pat identity-iso (begin body ...))))]))
+    [(_ target-expr [pat0 body0 ...] clause ...)
+     #'(let ([target target-expr])
+         (parameterize ([current-update-target target])
+           (update* target pat0 (begin body0 ...) (update target clause ...))))]
+    [(_ target-expr)
+     #'(error 'update "no matching clauses")]))
+
+(begin-for-syntax
+  (define-literal-set pattern-literals
+    #:datum-literals (cons list list-of struct-field iso optic and2 ? _)
+    ()))
 
 ; compile the patterns to nested bindings of variables to optics
 (define-syntax update*
   (syntax-parser
-    [(_ current-val:id pat optic-so-far:id body)
+    [(_ target:id pat body on-fail)
+     #'(let ([on-fail-proc (thunk on-fail)])
+         (validate-target target pat
+                          (bind-optics identity-iso pat body)
+                          on-fail-proc))]))
+
+; check if the pattern matches the target successfully
+; this could currently just evaluate to a boolean, but in case things get weird in the future, it is more general
+(define-syntax validate-target
+  (syntax-parser
+    [(_ target:id pat body on-fail:id)
      (syntax-parse #'pat
-       #:datum-literals (cons list list-of struct-field iso optic and2 ? _)
+       #:literal-sets (pattern-literals)
        [(cons car-pat cdr-pat)
-        #'(if (cons? current-val)
-              (let ([car-val (car current-val)]
-                    [cdr-val (cdr current-val)]
-                    [lens-with-car (optic-compose optic-so-far car-lens)]
-                    [lens-with-cdr (optic-compose optic-so-far cdr-lens)])
-                (update* car-val car-pat lens-with-car
-                         (update* cdr-val cdr-pat lens-with-cdr
-                                  body)))
-              (error 'update "expected a cons, got ~a" current-val))]
-       [(list) #'(update* current-val _ optic-so-far body)]
+        #'(if (cons? target)
+            (let ([a (car target)]
+                  [d (cdr target)])
+              (validate-target a car-pat (validate-target d cdr-pat body on-fail) on-fail))
+            (on-fail))]
+       [(list) #'(if (null? target) body (on-fail))]
        [(list pat0 pat ...)
-        #'(update* current-val (cons pat0 (list pat ...)) optic-so-far body)]
+        #'(validate-target target (cons pat0 (list pat ...)) body on-fail)]
        [(list-of pat)
-        #'(if (list? current-val)
-              (let ([new-optic (traversal-compose optic-so-far list-traversal)])
-                (update* current-val pat new-optic body))
-              (error 'update "expected a cons, got ~a" current-val))]
+        #'(if (list? target)
+              (validate-targets target pat body on-fail)
+              (on-fail))]
        [(struct-field struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
         (define/syntax-parse struct-name? (get-struct-pred-id #'struct-name))
-        #'(if (struct-name? current-val)
+        #'(if (struct-name? target)
               (let* ([field-lens (struct-lens struct-name field-name)]
-                     [field-value (lens-get field-lens current-val)]
-                     [new-optic (optic-compose optic-so-far field-lens)])
-                (update* field-value field-pat new-optic body))
-              (error 'update "expected a ~a, got ~a" 'struct-name? current-val))]
-       [(iso forward backward pat)
-        #'(let* ([iso (make-iso forward backward)]
-                 [new-optic (optic-compose optic-so-far iso)])
-            (update* current-val pat new-optic body))]
-       [(optic o pat)
-        #'(let ([new-optic (optic-compose optic-so-far o)])
-            (update* current-val pat new-optic body))]
+                     [field-value (lens-get field-lens target)])
+                (validate-target field-value field-pat body on-fail))
+              (on-fail))]
+       [(iso target? forward backward pat)
+        #'(if (target? target)
+            (let ([new-target (forward target)])
+              (validate-target new-target pat body on-fail))
+            (on-fail))]
+       [(optic target? o pat)
+        #'(if (target? target)
+              ; this assumes all optics are traversals. This will not be the case if we add folds. but folds are ->list-able
+              (let ([new-targets (traversal->list o target)])
+                (validate-targets new-targets pat body on-fail))
+              (on-fail))]
        [(and2 pat1 pat2)
-        #'(update* current-val pat1 optic-so-far (update* current-val pat2 optic-so-far body))]
-       [(? predicate (~optional (~seq #:description desc)))
-        #'(if (predicate current-val)
+        #'(validate-target target pat1 (validate-target target pat2 body on-fail) on-fail)]
+       [(? predicate)
+        #'(if (predicate target)
               body
-              (error 'update (~? (~@ "expected a ~a, got ~a" desc current-val) "predicate check failed")))]
+              (on-fail))]
        [_ #'body]
-       [var:id #'(let ([var optic-so-far]) body)])]))
+       [var:id #'body])]))
+
+; helper for validating a sequence of targets with the same pattern
+(define-syntax validate-targets
+  (syntax-parser
+    [(_ targets:id pat body on-fail:id)
+     #'(let ([return-false (const #f)])
+         (if (and (sequence? targets) (for/and ([target targets]) (validate-target target pat #t return-false)))
+             body
+             (on-fail)))]))
 
 (define-for-syntax (get-struct-pred-id struct-id-stx)
   (syntax-parse struct-id-stx
     [s:struct-id
      (attribute s.predicate-id)]))
+
+; compose and bind lenses
+(define-syntax bind-optics
+  (syntax-parser
+    [(_ current-optic:id pat body)
+     (syntax-parse #'pat
+       #:literal-sets (pattern-literals)
+       [(cons car-pat cdr-pat)
+        #'(let ([optic-with-car (optic-compose current-optic car-lens)]
+                [optic-with-cdr (optic-compose current-optic cdr-lens)])
+            (bind-optics optic-with-car car-pat
+                         (bind-optics optic-with-cdr cdr-pat body)))]
+       [(list) #'body]
+       [(list pat0 pat ...)
+        #'(bind-optics current-optic (cons pat0 (list pat ...)) body)]
+       [(list-of pat)
+        #'(let ([new-optic (optic-compose current-optic list-traversal)])
+            (bind-optics new-optic pat body))]
+       [(struct-field struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
+        #'(let ([new-optic (optic-compose current-optic (struct-lens struct-name field-name))])
+            (bind-optics new-optic field-pat body))]
+       [(iso target? forward backward pat)
+        #'(let ([new-optic (optic-compose current-optic (make-iso forward backward))])
+            (bind-optics new-optic pat body))]
+       [(optic target? o pat)
+        #'(let ([new-optic (optic-compose current-optic o)])
+            (bind-optics new-optic pat body))]
+       [(and2 pat1 pat2)
+        #'(bind-optics current-optic pat1 (bind-optics current-optic pat2 body))]
+       [(? predicate (~optional (~seq #:description desc)))
+        #'body]
+       [_ #'body]
+       [var:id
+        #'(let ([var current-optic])
+            body)])]))
+
 
 (module+ test
   ; you can set values
@@ -156,10 +215,10 @@ value. The user has first-class access to the optics, their foci, and can use th
   ; you can access the optic directly
   (check-pred lens? (update '(1 2) [(list a b) a]))
   (test-equal? "can use iso to treat an X as a Y"
-               (update 'foo [(iso symbol->string string->symbol str) (modify str string-upcase)])
+               (update 'foo [(iso symbol? symbol->string string->symbol str) (modify str string-upcase)])
                'FOO)
   (test-equal? "can specify an optic directly"
-               (update (list 1 2) [(optic list-traversal a) (modify a -)])
+               (update (list 1 2) [(optic list? list-traversal a) (modify a -)])
                (list -1 -2))
   (test-equal? "and pattern"
                (update (list 1 2) [(and2 (list-of n) (list a b))
@@ -185,11 +244,10 @@ value. The user has first-class access to the optics, their foci, and can use th
                                     (set a #t)])
                 '(#t (2 4)))
   (test-equal? "iso composes"
-               (update '(foo bar) [(cons (iso symbol->string string->symbol str) _) (modify str string-upcase)])
+               (update '(foo bar) [(cons (iso symbol? symbol->string string->symbol str) _) (modify str string-upcase)])
                '(FOO bar))
   ; regression test:
-  ; currently, the expanded code inserts structure checks and composes and binds optics.
-  ; this structure check is/was broken for list-of.
+  ; structure check was broken for list-of. structure check only really worked for lenses.
   (test-equal? "list-of structs works"
                (update (list (posn 1 2) (posn 3 4)) [(list-of (struct-field posn x)) (modify x -)])
                (list (posn -1 2) (posn -3 4))))
