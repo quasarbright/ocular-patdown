@@ -88,7 +88,7 @@ For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's
   #:methods gen:traversal
   [(define (traversal-modify lens target proc)
      (lens-set lens target (proc (lens-get lens target))))
-   (define (traversal-fold lens target proc init)
+   (define (traversal-foldl lens target proc init)
      (proc (lens-get lens target) init))])
 ; (getter target) retrieves the focus from the target
 #;(-> target/c focus/c)
