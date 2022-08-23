@@ -1,3 +1,3 @@
-pattern-updating
+ocular-patdown
 ================
-README text here.
+Like pattern matching, but for deep immutable updates via optics like lenses, traversals, etc. Also provides an optics library.
