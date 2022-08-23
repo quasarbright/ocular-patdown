@@ -33,7 +33,8 @@
  ; get, set, modify, etc. use this under the hood.
  ; NOTE: When using this parameter, be careful when performing multiple updates. You must update the parameter
  ; with its new value.
- current-update-target)
+ current-update-target
+ (for-syntax pattern-literals))
 
 #|
 ; happy birthday dad!
