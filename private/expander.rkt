@@ -1,7 +1,7 @@
 #lang racket
 
 (module+ test (require rackunit))
-(provide)
+(provide (all-defined-out))
 
 
 
@@ -9,6 +9,7 @@
          "../optics/traversal.rkt"
          "../optics/isomorphism.rkt"
          "../optics/lens.rkt"
+         "../optics/optic.rkt"
          (rename-in "../private/core.rkt"
                     [update core-update])
          (for-syntax syntax/parse syntax/parse/class/struct-id))
@@ -23,25 +24,28 @@
                    #:binding-space pattern-update)
 
   (nonterminal clause
+               #:description "matching clause"
                 [p:pat e:expr]
                 #:binding
-                (nest-one p e))
+                (nest-one p (host e)))
 
   (nesting-nonterminal pat (body)
+                       #:description "pattern"
                        #:bind-literal-set pattern-literals
-                       #:allow-extention pattern-macro
+                       #:allow-extension pattern-macro
                        v:var
                        #:binding {(bind v) body}
                        _
                        #:binding {body}
                        (optic target?:expr o:expr p:pat)
-                       #:binding (nest-one p body)
+                       #:binding [(nest-one p body) (host target?) (host o)]
                        (and2 p1:pat p2:pat)
                        #:binding (nest-one p1 (nest-one p2 body))
                        (? pred:expr)
-                       #:binding {body}
+                       #:binding [{body} (host pred)]
                        ; TODO literals in pm space so they can be provided, renamed, etc.
                        ; TODO just make these macros!
+                       #|
                        (~> (cons p1 p2)
                            #'(and (optic cons? car-lens p1) (optic cons? cdr-lens p2)))
                        (~> (list)
@@ -60,7 +64,7 @@
                        (~> (and p0 p ...)
                            #'(and2 p0 (and p ...)))
                        (~> (? pred p ...)
-                           #'(and (? pred) p ...))))
+                           #'(and (? pred) p ...))|#))
 
 (define-for-syntax (get-struct-pred-id struct-id-stx)
   (syntax-parse struct-id-stx
@@ -80,7 +84,7 @@
 
 (define-host-interface/expression (update target:expr c:clause)
   #:with compiled-c (compile-clause #'c)
-  (println #'compiled-c)
+  (displayln #'compiled-c)
   #'(parameterize ([current-update-target target])
       compiled-c))
 
@@ -102,17 +106,26 @@
          #:literal-sets (pattern-literals)
          [var:id
           #:with compiled-var (compile-binder! #'var)
-          #:with compiled-body (resume-host-expansion #'body #:reference-compilers ([var compile-reference]))
+          #:with compiled-body (compile-host-expr #'body)
+          (displayln (syntax-debug-info #'compiled-var))
+          (displayln (syntax-debug-info #'var))
           #'(let ([compiled-var current-optic]) compiled-body)]
          [_
-          #:with compiled-body (resume-host-expansion #'body #:reference-compilers ([var compile-reference]))
+          #:with compiled-body (compile-host-expr #'body)
           #'compiled-body]
          [(optic target? o p)
-          #`(let ([new-optic (optic-compose current-optic o)])
-              #,(compile-pattern #'new-optic #'p #'compiled-body))]
+          #`(let ([new-optic (optic-compose current-optic #,(compile-host-expr #'o))])
+              #,(compile-pattern #'new-optic #'p #'body))]
          [(and2 p1 p2)
-          (compile-pattern #'current-optic #'p1 (compile-pattern #'current-optic #'p2 #'compiled-body))]
-         [(? predicate) #'compiled-body])])))
+          (compile-pattern #'current-optic #'p1 (compile-pattern #'current-optic #'p2 #'body))]
+         [(? predicate)
+          #:with compiled-body (compile-host-expr #'body)
+          #'compiled-body])]))
+
+  (define (compile-host-expr e) (resume-host-expansion e #:reference-compilers ([var compile-reference]))))
+
+(define-pattern-syntax m (syntax-parser [(_ p) #'p]))
+(update (list 1 2) [(m a) a])
 
 
 
