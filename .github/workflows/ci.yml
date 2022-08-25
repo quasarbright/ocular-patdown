@@ -16,9 +16,9 @@ jobs:
           distribution: full
           variant: ${{ matrix.racket-variant }}
           version: ${{ matrix.racket-version }}
-      - name: Installing pattern-updating and its dependencies
-        run: raco pkg install --no-docs --auto --name pattern-updating
-      - name: Compiling pattern-updating and building its docs
-        run: raco setup --check-pkg-deps --unused-pkg-deps pattern-updating
-      - name: Testing pattern-updating
-        run: raco test -x -p pattern-updating
+      - name: Installing ocular-patdown and its dependencies
+        run: raco pkg install --no-docs --auto --name ocular-patdown
+      - name: Compiling ocular-patdown and building its docs
+        run: raco setup --check-pkg-deps --unused-pkg-deps ocular-patdown
+      - name: Testing ocular-patdown
+        run: raco test -x -p ocular-patdown
