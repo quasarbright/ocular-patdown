@@ -28,7 +28,9 @@
                 [p:pat e:expr]
                 #:binding
                 ; this extra scope is a hack to prevent use-site scopes.
-                ; the racket expander doesn't add a use-site scope if the use-site is in a separate scope from the macro definition
+                ; the racket expander doesn't add a use-site scope if the use-site is in a separate scope from the macro definition.
+                ; if there were use-site scopes added, bindings in macro patterns like (cons a d) wouldn't be in scope in expression positions.
+                ; using recursive, export, and re-export might also work.
                 {(nest-one p (host e))})
 
   (nesting-nonterminal pat (body)
@@ -44,26 +46,7 @@
                        (and2 p1:pat p2:pat)
                        #:binding (nest-one p1 (nest-one p2 body))
                        (#%? pred:expr)
-                       #:binding [{body} (host pred)]
-                       ; TODO literals in pm space so they can be provided, renamed, etc.
-                       ; TODO just make these macros!
-                       #|(~> ((~datum cons) p1 p2)
-                           #'(and (optic cons? car-lens p1) (optic cons? cdr-lens p2)))
-                       (~> ((~datum list))
-                           #'_)
-                       (~> ((~datum list) p0 p ...)
-                           #'(cons p0 (list p ...)))
-                       (~> ((~datum list-of) p)
-                           #'(optic list? list-traversal p))
-                       (~> ((~datum struct-field) struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
-                           (define/syntax-parse predicate (get-struct-pred-id #'struct-name))
-                           #'(optic predicate (struct-field-lens struct-name field-name) field-pat))
-                       (~> ((~datum iso) target? forward backward pat)
-                           #'(optic target? (make-iso forward backward) pat))
-                       (~> ((~datum and))
-                           #'_)
-                       (~> ((~datum and) p0 p ...)
-                           #'(and2 p0 (and p ...)))|#))
+                       #:binding [{body} (host pred)]))
 
 (define-for-syntax (get-struct-pred-id struct-id-stx)
   (syntax-parse struct-id-stx
@@ -85,7 +68,7 @@
 (define-pattern-syntax list (syntax-rules () [(list) _] [(list p0 p ...) (cons p0 (list p ...))]))
 (define-pattern-syntax list-of (syntax-rules () [(listof p) (optic list? list-traversal p)]))
 (define-pattern-syntax struct-field
-  (syntax-parser [(struct-field struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
+  (syntax-parser [(_ struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
                   (define/syntax-parse predicate (get-struct-pred-id #'struct-name))
                   #'(optic predicate (struct-field-lens struct-name field-name) field-pat)]))
 (define-pattern-syntax iso (syntax-rules () [(iso target? forward backward pat) (optic target? (make-iso forward-backward) pat)]))
