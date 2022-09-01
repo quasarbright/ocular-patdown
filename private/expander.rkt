@@ -27,7 +27,9 @@
                #:description "matching clause"
                 [p:pat e:expr]
                 #:binding
-                (nest-one p (host e)))
+                ; this extra scope is a hack to prevent use-site scopes.
+                ; the racket expander doesn't add a use-site scope if the use-site is in a separate scope from the macro definition
+                {(nest-one p (host e))})
 
   (nesting-nonterminal pat (body)
                        #:description "pattern"
@@ -41,30 +43,27 @@
                        #:binding [(nest-one p body) (host target?) (host o)]
                        (and2 p1:pat p2:pat)
                        #:binding (nest-one p1 (nest-one p2 body))
-                       (? pred:expr)
+                       (#%? pred:expr)
                        #:binding [{body} (host pred)]
                        ; TODO literals in pm space so they can be provided, renamed, etc.
                        ; TODO just make these macros!
-                       #|
-                       (~> (cons p1 p2)
+                       #|(~> ((~datum cons) p1 p2)
                            #'(and (optic cons? car-lens p1) (optic cons? cdr-lens p2)))
-                       (~> (list)
+                       (~> ((~datum list))
                            #'_)
-                       (~> (list p0 p ...)
+                       (~> ((~datum list) p0 p ...)
                            #'(cons p0 (list p ...)))
-                       (~> (list-of p)
+                       (~> ((~datum list-of) p)
                            #'(optic list? list-traversal p))
-                       (~> (struct-field struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
+                       (~> ((~datum struct-field) struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
                            (define/syntax-parse predicate (get-struct-pred-id #'struct-name))
                            #'(optic predicate (struct-field-lens struct-name field-name) field-pat))
-                       (~> (iso target? forward backward pat)
+                       (~> ((~datum iso) target? forward backward pat)
                            #'(optic target? (make-iso forward backward) pat))
-                       (~> (and)
+                       (~> ((~datum and))
                            #'_)
-                       (~> (and p0 p ...)
-                           #'(and2 p0 (and p ...)))
-                       (~> (? pred p ...)
-                           #'(and (? pred) p ...))|#))
+                       (~> ((~datum and) p0 p ...)
+                           #'(and2 p0 (and p ...)))|#))
 
 (define-for-syntax (get-struct-pred-id struct-id-stx)
   (syntax-parse struct-id-stx
@@ -82,51 +81,53 @@
     [(_ (macro-name:id args ...) body ...) #'(define-pattern-syntax macro-name (λ (args ...) body ...))]
     [(_ macro-name:id transformer) #'(define-update-syntax macro-name (pattern-macro transformer))]))
 
+(define-pattern-syntax cons (syntax-rules () [(cons a d) (and (optic cons? car-lens a) (optic cons? cdr-lens d))]))
+(define-pattern-syntax list (syntax-rules () [(list) _] [(list p0 p ...) (cons p0 (list p ...))]))
+(define-pattern-syntax list-of (syntax-rules () [(listof p) (optic list? list-traversal p)]))
+(define-pattern-syntax struct-field
+  (syntax-parser [(struct-field struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
+                  (define/syntax-parse predicate (get-struct-pred-id #'struct-name))
+                  #'(optic predicate (struct-field-lens struct-name field-name) field-pat)]))
+(define-pattern-syntax iso (syntax-rules () [(iso target? forward backward pat) (optic target? (make-iso forward-backward) pat)]))
+(define-pattern-syntax and (syntax-rules () [(and) _] [(and p0 p ...) (and2 p0 (and p ...))]))
+(define-pattern-syntax ? (syntax-rules () [(? predicate p ...) (and (? predicate) p ...)]))
+
 (define-host-interface/expression (update target:expr c:clause)
   #:with compiled-c (compile-clause #'c)
-  (displayln #'compiled-c)
   #'(parameterize ([current-update-target target])
       compiled-c))
-
-;;; left off here. I think I have to do compile-reference in the core compiler, unfortunately
-;;; see https://github.com/michaelballantyne/bindingspec/blob/main/test/dsls/minikanren-rs2e/mk.rkt for a full example
 
 (begin-for-syntax
   (define (compile-clause c)
     (syntax-parse c
-      [[p body] (compile-pattern #'identity-iso #'p #'body)]))
+      [[p body] (compile-pattern #'identity-iso #'p (compile-host-expr #'body))]))
 
   (define (compile-pattern current-optic p body)
     (syntax-parse p
       [p
-       ;#:with compiled-body (resume-host-expansion body #:reference-compilers ([var compile-reference]))
        #:with body body
        #:with current-optic current-optic
        (syntax-parse #'p
          #:literal-sets (pattern-literals)
          [var:id
           #:with compiled-var (compile-binder! #'var)
-          #:with compiled-body (compile-host-expr #'body)
-          (displayln (syntax-debug-info #'compiled-var))
-          (displayln (syntax-debug-info #'var))
-          #'(let ([compiled-var current-optic]) compiled-body)]
+          #'(let ([compiled-var current-optic]) body)]
          [_
-          #:with compiled-body (compile-host-expr #'body)
-          #'compiled-body]
+          #'body]
          [(optic target? o p)
           #`(let ([new-optic (optic-compose current-optic #,(compile-host-expr #'o))])
               #,(compile-pattern #'new-optic #'p #'body))]
          [(and2 p1 p2)
           (compile-pattern #'current-optic #'p1 (compile-pattern #'current-optic #'p2 #'body))]
-         [(? predicate)
-          #:with compiled-body (compile-host-expr #'body)
-          #'compiled-body])]))
+         [(#%? predicate)
+          #'body])]))
 
   (define (compile-host-expr e) (resume-host-expansion e #:reference-compilers ([var compile-reference]))))
 
-(define-pattern-syntax m (syntax-parser [(_ p) #'p]))
-(update (list 1 2) [(m a) a])
 
-
-
-(module+ test)
+(module+ test
+  (check-equal? (update 1 [_ 2]) 2)
+  (check-pred optic? (update 1 [a a]))
+  (check-equal? (update '(1) [(optic cons? car-lens a) (get a)]) 1)
+  (check-equal? (update '(1 2) [(and a (cons b c)) (map get (list a b c))]) '((1 2) 1 (2)))
+  (check-equal? (update '(1 2) [(list a b) (get b)]) 2))
