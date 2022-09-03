@@ -73,7 +73,7 @@
                   #'(optic predicate (struct-field-lens struct-name field-name) field-pat)]))
 (define-pattern-syntax iso (syntax-rules () [(iso target? forward backward pat) (optic target? (make-iso forward-backward) pat)]))
 (define-pattern-syntax and (syntax-rules () [(and) _] [(and p0 p ...) (and2 p0 (and p ...))]))
-(define-pattern-syntax ? (syntax-rules () [(? predicate p ...) (and (? predicate) p ...)]))
+(define-pattern-syntax ? (syntax-rules () [(? predicate p ...) (and (#%? predicate) p ...)]))
 
 (define-host-interface/expression (update target:expr c:clause)
   #:with compiled-c (compile-clause #'c)
@@ -83,9 +83,46 @@
 (begin-for-syntax
   (define (compile-clause c)
     (syntax-parse c
-      [[p body] (compile-pattern #'identity-iso #'p (compile-host-expr #'body))]))
+      [[p body] (compile-bind-optics #'identity-iso #'p (compile-host-expr #'body))]))
 
-  (define (compile-pattern current-optic p body)
+  (define (compile-validate-target target pat body on-fail)
+    (syntax-parse (list target pat body on-fail)
+      [(target:id pat body on-fail:id)
+       (syntax-parse #'pat
+         #:literal-sets (pattern-literals)
+         [var:id #'body]
+         [_ #'body]
+         [(optic target? o pat)
+          #:with target?^ (compile-host-expr #'target?)
+          #:with o^ (compile-host-expr #'o)
+          ; simulate introduction scopes to be safe
+          #:with (new-targets) (generate-temporaries (list #'new-targets))
+          #`(if (target?^ target)
+                (let ([new-targets (traversal->list o^ target)])
+                  #,(compile-validate-targets #'new-targets #'pat #'body #'on-fail))
+                (on-fail))]
+         [(and2 p1 p2)
+          (compile-validate-target #'target #'p1
+                                   (compile-validate-target #'target #'p2 #'body #'on-fail))]
+         [(#%? predicate)
+          #:with predicate^ (compile-host-expr #'predicate)
+          #'(if (predicate^ target)
+                body
+                (on-fail))])]))
+
+  (define (compile-validate-targets targets pat body on-fail)
+    (syntax-parse (list targets pat body on-fail)
+      [(targets:id pat body on-fail:id)
+       ; if you want to avoid using booleans like this, you can use call/cc
+       ; see schema scheme's bindingspec compiler for listof
+       #`(let ([return-false (const #f)])
+           (if (and (sequence? targets)
+                    (for/and ([target targets])
+                      #,(compile-validate-target #'target #'pat #'#t #'return-false)))
+               body
+               (on-fail)))]))
+
+  (define (compile-bind-optics current-optic p body)
     (syntax-parse p
       [p
        #:with body body
@@ -93,20 +130,22 @@
        (syntax-parse #'p
          #:literal-sets (pattern-literals)
          [var:id
-          #:with compiled-var (compile-binder! #'var)
-          #'(let ([compiled-var current-optic]) body)]
+          #:with var^ (compile-binder! #'var)
+          #'(let ([var^ current-optic]) body)]
          [_
           #'body]
          [(optic target? o p)
-          #`(let ([new-optic (optic-compose current-optic #,(compile-host-expr #'o))])
-              #,(compile-pattern #'new-optic #'p #'body))]
+          #:with o^ (compile-host-expr #'o)
+          ; simulate introduction scopes to be safe
+          #:with (new-optic) (generate-temporaries (list #'new-optic))
+          #`(let ([new-optic (optic-compose current-optic o^)])
+              #,(compile-bind-optics #'new-optic #'p #'body))]
          [(and2 p1 p2)
-          (compile-pattern #'current-optic #'p1 (compile-pattern #'current-optic #'p2 #'body))]
+          (compile-bind-optics #'current-optic #'p1 (compile-bind-optics #'current-optic #'p2 #'body))]
          [(#%? predicate)
           #'body])]))
 
   (define (compile-host-expr e) (resume-host-expansion e #:reference-compilers ([var compile-reference]))))
-
 
 (module+ test
   (check-equal? (update 1 [_ 2]) 2)
