@@ -1,8 +1,7 @@
 #lang racket
 
 (module+ test (require rackunit))
-(provide (all-defined-out) (for-space pattern-update (all-defined-out))
-         #;(update expr [pattern body ...+] ...)
+(provide #;(update expr [pattern body ...+] ...)
          ; like match, but can also be used for immutably updating values.
          ; Use get, set, modify, etc. on pattern-bound variables.
          ; Under the hood, variables are bound to optics like lenses and traversals
@@ -26,7 +25,40 @@
          ; get, set, modify, etc. use this under the hood.
          ; NOTE: When using this parameter, be careful when performing multiple updates. You must update the parameter
          ; with its new value.
-         current-update-target)
+         current-update-target
+         (for-space pattern-update
+                    ; accepts all values and binds nothing
+                    _
+                    #;(optic target?:expr o:expr p:pat)
+                    ; accepts values which pass the predicate 'target?',
+                    ; composes with optic 'o', and continues matching against 'pat'.
+                    optic
+                    #;(and p:pat ...)
+                    ; matches all patterns on the target
+                    and
+                    #;(? pred:expr)
+                    ; ensure the value matches the predicate. fail otherwise.
+                    ?
+                    #;(cons car-pat:pat cdr-pat:pat)
+                    ; matches a cons cell and matches the car against 'car-pat' and the cdr against 'cdr-pat'.
+                    cons
+                    #;(list p:pat ...)
+                    ; matches a list with as many elements as patterns in the list pattern,
+                    ; matches each sub-pattern to on its corresponding element.
+                    list
+                    #;(list-of p:pat)
+                    ; matches a list and matches each element against the pattern.
+                    ; All variables bound in the pattern operate on all elements.
+                    list-of
+                    #;(struct-field struct-name:struct-id field-name:id p:pat)
+                    ; matches a struct's field
+                    struct-field
+                    #;(iso target? forward backward p:pat)
+                    ; matches a value satisfying the 'target?' predicate and composes the current optic with the specified isomorphism.
+                    ; Useful for treating a symbol as a string, for example.
+                    iso)
+         ; like define-syntax, but defines a macro for patterns.
+         define-pattern-syntax)
 
 
 
@@ -64,6 +96,7 @@
   (nesting-nonterminal pat (body)
                        #:description "pattern"
                        #:allow-extension pattern-macro
+                       #:binding-space pattern-update
                        v:var
                        #:binding {(bind v) body}
                        _
