@@ -1,6 +1,5 @@
 #lang scribble/manual
-@require[@for-label[ocular-patdown
-                    racket/base]]
+@require[@for-label[ocular-patdown]]
 
 @title{ocular-patdown}
 @author{mdelmonaco}
