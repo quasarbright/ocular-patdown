@@ -1,7 +1,7 @@
 #lang racket
 
 (module+ test (require rackunit))
-(provide (all-defined-out))
+(provide (all-defined-out) (for-space pattern-update (all-defined-out)))
 
 
 
@@ -33,9 +33,13 @@
                 ; using recursive, export, and re-export might also work.
                 {(nest-one p (host e))})
 
+  (nonterminal pat-top
+               #:description "pattern"
+               p:pat
+               #:binding (nest-one p []))
+
   (nesting-nonterminal pat (body)
                        #:description "pattern"
-                       #:bind-literal-set pattern-literals
                        #:allow-extension pattern-macro
                        v:var
                        #:binding {(bind v) body}
@@ -75,16 +79,31 @@
 (define-pattern-syntax and (syntax-rules () [(and) _] [(and p0 p ...) (and2 p0 (and p ...))]))
 (define-pattern-syntax ? (syntax-rules () [(? predicate p ...) (and (#%? predicate) p ...)]))
 
-(define-host-interface/expression (update target:expr c:clause)
-  #:with compiled-c (compile-clause #'c)
-  #'(parameterize ([current-update-target target])
-      compiled-c))
+(define-syntax update
+  (syntax-parser
+    [(_ target [pat body] clause ...)
+     ; begin might need to be (let () body ...)
+     #'(update* target pat body (update target clause ...))]
+    [(_ target)
+     #'(error 'update "no matching clause for ~v" target)]))
+
+; on-fail is the expression to evaluate upon failure. not a thunk.
+(define-host-interface/expression (update* target:expr p:pat body:expr on-fail:expr)
+  #:binding [(nest-one p (host body))]
+  #`(let ([on-fail-proc (thunk on-fail)]
+          [target-v target])
+      #,(compile-validate-target #'target-v #'p
+                                 (compile-bind-optics #'identity-iso #'p
+                                                      #`(parameterize ([current-update-target target-v])
+                                                          #,(compile-host-expr #'body)))
+                                 #'on-fail-proc)))
 
 (begin-for-syntax
   (define (compile-clause c)
     (syntax-parse c
       [[p body] (compile-bind-optics #'identity-iso #'p (compile-host-expr #'body))]))
 
+  ; on-fail is an identifier bound to a zero-argument procedure to call upon failure.
   (define (compile-validate-target target pat body on-fail)
     (syntax-parse (list target pat body on-fail)
       [(target:id pat body on-fail:id)
@@ -103,7 +122,8 @@
                 (on-fail))]
          [(and2 p1 p2)
           (compile-validate-target #'target #'p1
-                                   (compile-validate-target #'target #'p2 #'body #'on-fail))]
+                                   (compile-validate-target #'target #'p2 #'body #'on-fail)
+                                   #'on-fail)]
          [(#%? predicate)
           #:with predicate^ (compile-host-expr #'predicate)
           #'(if (predicate^ target)
