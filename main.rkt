@@ -1,5 +1,5 @@
 #lang racket
 
-(require "./private/core.rkt")
+(require "./private/expander.rkt")
 (provide
- (all-from-out "./private/core.rkt"))
+ (all-from-out "./private/expander.rkt"))

@@ -1,7 +1,32 @@
 #lang racket
 
 (module+ test (require rackunit))
-(provide (all-defined-out) (for-space pattern-update (all-defined-out)))
+(provide (all-defined-out) (for-space pattern-update (all-defined-out))
+         #;(update expr [pattern body ...+] ...)
+         ; like match, but can also be used for immutably updating values.
+         ; Use get, set, modify, etc. on pattern-bound variables.
+         ; Under the hood, variables are bound to optics like lenses and traversals
+         update
+         #;(-> lens? any/c)
+         ; get the value
+         get
+         #;(-> lens? any/c any/c)
+         ; set the value
+         set
+         #;(-> lens? (-> any/c any/c) any/c)
+         ; apply a function to update the value(s)
+         modify
+         #;(-> lens? (-> A B B) B B)
+         ; foldl over the values
+         fold
+         ; a parameter for the current update target. Gets updated by set, modify, etc.
+         ; Useful for using optics with low-level functions. Ex:
+         #;(update (list 1 2) [(list a b) (optic-set a (current-update-target) 3)])
+         #;'(3 2)
+         ; get, set, modify, etc. use this under the hood.
+         ; NOTE: When using this parameter, be careful when performing multiple updates. You must update the parameter
+         ; with its new value.
+         current-update-target)
 
 
 
@@ -10,8 +35,6 @@
          "../optics/isomorphism.rkt"
          "../optics/lens.rkt"
          "../optics/optic.rkt"
-         (rename-in "../private/core.rkt"
-                    [update core-update])
          (for-syntax syntax/parse syntax/parse/class/struct-id))
 
 
@@ -98,9 +121,9 @@
                                  #'on-fail-proc)))
 
 (begin-for-syntax
-  (define (compile-clause c)
-    (syntax-parse c
-      [[p body] (compile-bind-optics #'identity-iso #'p (compile-host-expr #'body))]))
+  (define-literal-set pattern-literals
+    #:datum-literals (cons list list-of struct-field iso optic and2 ? _)
+    ())
 
   ; on-fail is an identifier bound to a zero-argument procedure to call upon failure.
   (define (compile-validate-target target pat body on-fail)
@@ -165,6 +188,21 @@
           #'body])]))
 
   (define (compile-host-expr e) (resume-host-expansion e #:reference-compilers ([var compile-reference]))))
+
+; the scrutinee of the current update form. Does not change as the update dives into the structure.
+(define current-update-target (make-parameter #f #f 'current-update-target))
+; retrieve the focus of the current target under 'optic'
+(define (get optic) (optic-get optic (current-update-target)))
+; set the focus of the current target under 'optic'
+(define (set optic focus)
+  (current-update-target (optic-set optic (current-update-target) focus))
+  (current-update-target))
+; apply a function to update the focus of the current target under 'optic'
+(define (modify optic func)
+  (current-update-target (traversal-modify optic (current-update-target) func))
+  (current-update-target))
+; fold over the current target's foci under 'traversal'
+(define (fold traversal proc init) (traversal-foldl traversal (current-update-target) proc init))
 
 (module+ test
   ; you can set values
