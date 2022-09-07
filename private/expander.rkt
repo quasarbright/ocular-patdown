@@ -121,11 +121,11 @@
 
 (define-syntax define-pattern-syntax
   (syntax-parser
-    [(_ (macro-name:id args ...) body ...) #'(define-pattern-syntax macro-name (λ (args ...) body ...))]
+    [(_ (macro-name:id args ...) body ...+) #'(define-pattern-syntax macro-name (λ (args ...) body ...))]
     [(_ macro-name:id transformer) #'(define-update-syntax macro-name (pattern-macro transformer))]))
 
 (define-pattern-syntax cons (syntax-rules () [(cons a d) (and (optic cons? car-lens a) (optic cons? cdr-lens d))]))
-(define-pattern-syntax list (syntax-rules () [(list) _] [(list p0 p ...) (cons p0 (list p ...))]))
+(define-pattern-syntax list (syntax-rules () [(list) (? null?)] [(list p0 p ...) (cons p0 (list p ...))]))
 (define-pattern-syntax list-of (syntax-rules () [(listof p) (optic list? list-traversal p)]))
 (define-pattern-syntax struct-field
   (syntax-parser [(_ struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
@@ -223,7 +223,7 @@
   (define (compile-host-expr e) (resume-host-expansion e #:reference-compilers ([var compile-reference]))))
 
 ; the scrutinee of the current update form. Does not change as the update dives into the structure.
-(define current-update-target (make-parameter #f #f 'current-update-target))
+(define current-update-target (make-parameter #f #f 'current-update-target-not-initialized))
 ; retrieve the focus of the current target under 'optic'
 (define (get optic) (optic-get optic (current-update-target)))
 ; set the focus of the current target under 'optic'
@@ -325,6 +325,12 @@
                 (update '(1 2)
                         [(list a b c) (error "boom")]
                         [(list a b) (list (get b) (get a))])
+                '(2 1))
+  ; regression test: (list) used to expand to _, rather than asserting the target is null.
+  (test-equal? "list pattern with too few elements fails"
+                (update '(1 2 3)
+                        [(list a b) (error "boom")]
+                        [(list a b c) (list (get b) (get a))])
                 '(2 1))
   (test-equal? "implicit begin in clause"
                (update 1 [a (define x (get a)) x])
