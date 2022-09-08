@@ -1,5 +1,5 @@
 #lang scribble/manual
-@require[scribble/example @for-label[(except-in racket set) ocular-patdown ocular-patdown/optics]]
+@require[scribble/example @for-label[(except-in racket set) ocular-patdown]]
 @(define op-eval (make-base-eval))
 @examples[#:hidden #:eval op-eval (require (except-in racket set) ocular-patdown ocular-patdown/optics)]
 
@@ -7,6 +7,7 @@
 @author{Mike Delmonaco}
 
 @defmodule[ocular-patdown]
+
 
 @;TODO link pat in clause to its racketgrammar
 @;TODO figure out how to get stuff like 'and' to link to the 'and' pattern, not the one from racket/base.
@@ -202,21 +203,23 @@ this way.
 
 @racket[get], @racket[set], and @racket[modify] are just ordinary procedures that operate on optics. The only thing that is special about them is that they know about the current target of an @racket[update].
 
-@defproc[(get [optic optic?]) any/c]{
+@defproc[(get [optic lens?]) any/c]{
   Gets the focus of @racket[optic] using @racket[current-update-target].
 
   @examples[
     #:eval op-eval
+    (update (cons 1 2) [(cons a _) (get a)])
     (parameterize ([current-update-target (cons 1 2)])
       (get car-lens))
   ]
 }
 
-@defproc[(set [optic optic?] [value any/c]) any/c]{
+@defproc[(set [optic lens?] [value any/c]) any/c]{
   Sets the focus of @racket[optic] to @racket[value] using @racket[current-update-target]. Also mutates @racket[current-update-target] and returns its new value.
 
   @examples[
     #:eval op-eval
+    (update (cons 1 2) [(cons a _) (set a #t)])
     (current-update-target (cons 1 2))
     (set car-lens -1)
     (current-update-target)
@@ -228,6 +231,7 @@ this way.
 
   @examples[
     #:eval op-eval
+    (update (cons 1 2) [(cons a _) (modify a sub1)])
     (current-update-target (cons 1 2))
     (modify cdr-lens sqr)
     (current-update-target)
@@ -239,6 +243,7 @@ this way.
 
   @examples[
     #:eval op-eval
+    (update (list 1 2 3) [(list-of a) (fold a + 0)])
     (parameterize ([current-update-target (list 1 2 3)])
       (fold list-traversal cons '()))
   ]
@@ -261,7 +266,12 @@ this way.
            #:contracts ([transformer-expr (-> syntax? syntax?)])]{
   Like @racket[define-syntax], but defines a macro for patterns in @racket[update]. Macro names are only visible within @racket[update] expressions, so they will not shadow names provided by Racket.
 
-  The first form defines a macro named @racket[id] bound to @racket[transformer-expr]. The second form is shorthand for @racket[(define-pattern-syntax id (lambda (arg-id ...) (begin body-expr ...)))].
+  The first form defines a macro named @racket[id] bound to @racket[transformer-expr]. The second form is shorthand for
+  @racketblock[
+    (define-pattern-syntax id
+      (lambda (arg-id ...)
+        (begin body-expr ...)))
+  ]
 
   @;{
   @examples[
@@ -273,4 +283,272 @@ this way.
     (update (posn 1 2) [(posn a b) (set a 4) (modify b -)])
   ]
   }
+}
+
+@section{Optics}
+
+@defmodule[ocular-patdown/optics]
+
+Under the hood, the @racket[update] form uses @deftech{optic}s. An optic is a first class getter and (immutable) setter for some @deftech{target} type and a @deftech{focus} or several foci within it.
+For example, @racket[car-lens] is an optic that targets pairs and focuses on a pair's @racket[car]. This optic can be used to get the @racket[car] of a pair, or return a new pair
+with an updated @racket[car].
+
+@examples[
+  #:eval op-eval
+  (define pair (cons 1 2))
+  (optic-get car-lens pair)
+  (optic-set car-lens pair 3)
+  pair
+]
+
+Optics can be composed to focus on values deep within a structure.
+
+@examples[
+  #:eval op-eval
+  (define pair (cons 1 (cons 2 3)))
+  (optic-set (optic-compose cdr-lens car-lens) pair #t)
+]
+
+@defproc[(optic? [val any/c]) boolean?]{
+  Predicate for optics.
+  @examples[
+    #:eval op-eval
+    (optic? car-lens)
+    (optic? list-traversal)
+    (optic? (cons 1 2))
+  ]
+}
+
+@defproc[(optic-get [optic lens?] [target any/c]) any/c]{
+  Gets the @tech{focus} of @racket[target] under @racket[optic]. The optic must be a @tech{lens}.
+
+  @examples[
+    #:eval op-eval
+    (optic-get car-lens (cons 1 2))
+    (optic-get cdr-lens (cons 1 2))
+  ]
+}
+
+@defproc[(optic-set [optic lens?] [target any/c] [focus any/c]) any/c]{
+  Sets the focus of @racket[target] to @racket[focus] under @racket[optic]. Does not mutate @racket[target], but rather, returns an updated copy of it. The optic must be a @tech{lens}.
+  @examples[
+    #:eval op-eval
+    (optic-set car-lens (cons 1 2) #t)
+  ]
+}
+
+@defproc[(optic-modify [optic optic?] [target any/c] [proc (-> any/c any/c)]) any/c]{
+  Like @racket[optic-set], but applies a function to the current value of the focus to update it. For multiple foci, each focus is updated individually. The optic does not have to be a @tech{lens}.
+  @examples[
+    #:eval op-eval
+    (optic-modify car-lens (cons 2 3) sqr)
+    (optic-modify list-traversal (list #t #t #f) not)
+  ]
+}
+
+@defproc[(optic-compose [optic optic?] ...) optic?]{
+  Compose multiple optics where the focus of the first optic is the target of the next. In other words, the shallow, top-level optic comes first and the deep, bottom-level optic comes last.
+  @examples[
+    #:eval op-eval
+    (struct tree [val children] #:transparent)
+    (define tree-first-child-lens (optic-compose (struct-lens tree children) car-lens))
+    (optic-set tree-first-child-lens
+               (tree 1 (list (tree 2 '()) (tree 3 '())))
+               (tree #t '()))
+    (define second-lens (optic-compose cdr-lens car-lens))
+    (optic-set second-lens (list 1 2) #t)
+    (define first-of-second-lens (optic-compose second-lens car-lens))
+    (optic-set first-of-second-lens (list 1 (list 2 3)) #t)
+    (define first-of-each-traversal (optic-compose list-traversal car-lens))
+    (optic-modify first-of-each-traversal
+               (list (list 1 2 3) (list 4 5) (list 6))
+               number->string)
+  ]
+
+  When composing optics of different types, the result is an instance of the most general optic type among the arguments.
+  @examples[
+    #:eval op-eval
+    (lens? (optic-compose car-lens car-lens))
+    (lens? (optic-compose list-traversal car-lens))
+    (traversal? (optic-compose list-traversal car-lens))
+  ]
+}
+
+@subsection{Lenses}
+
+@defmodule[ocolar-patdown/optics/lens]
+
+The bindings of this library are also provided by @racketmodname[ocular-patdown/optics].
+
+A @deftech{lens} is a type of optic that has a single focus. Lenses can be used to focus on a field of a struct, the @racket[car] of a pair, etc.
+
+@examples[
+  #:eval op-eval
+  (define pair (cons 1 2))
+  (lens-get car-lens pair)
+  (lens-set car-lens pair #t)
+  (struct posn [x y] #:transparent)
+  (define posn1 (posn 1 2))
+  (define posn-x-lens (struct-lens posn x))
+  (lens-get posn-x-lens posn1)
+  (lens-set posn-x-lens posn1 3)
+]
+
+@defproc[(lens? [val any/c]) boolean?]{
+  A predicate which recognizes lenses. To be more precise, it recognizes implementers of @racket[gen:lens].
+  @examples[
+    #:eval op-eval
+    (lens? car-lens)
+    (lens? list-traversal)
+    (lens? identity-iso)
+  ]
+}
+
+@defproc[(make-lens [getter (-> any/c any/c)] [setter (-> any/c any/c any/c)]) lens?]{
+  Constructor for lenses. @racket[getter] should extract the focus from the target.
+  @racket[setter] should take in the target and the new value for the focus and return a copy of the target with the updated focus.
+  @examples[
+    #:eval op-eval
+    (define my-car-lens (make-lens car (lambda (pair val) (cons val (cdr pair)))))
+    (lens? my-car-lens)
+    (lens-get my-car-lens (cons 1 2))
+    (lens-set my-car-lens (cons 1 2) #t)
+  ]
+  There are a few laws lenses should obey:
+  @itemize[
+    @item{
+      Getting the focus after setting the focus returns the new focus.
+      @racketblock[
+        (equal? (lens-get lens (lens-set lens target focus)) focus)
+      ]
+    }
+    @item{
+      Setting the focus using the current focus leaves the target unchanged.
+      @racketblock[(equal? (lens-set lens target (lens-get lens target)) target)]
+    }
+    @item{
+      Setting the focus twice is the same as setting it once with the second value.
+      @racketblock[(equal? (lens-set lens (lens-set lens target focus1) focus2) (lens-set lens target focus2))]
+    }
+  ]
+  These laws should be obeyed for some reasonable definition of equality. If these laws are not obeyed, you may experience unexpected behavior.
+
+  Lenses should also be pure. In other words, lens operations should not mutate the target or the focus, or have any other side effects. For setters,
+  it is recommended to create an updated copy of the original target rather than mutating it.
+}
+
+@defproc[(lens-get [lens lens?] [target any/c]) any/c]{
+  Gets the focus from @racket[target] under @racket[lens].
+  @examples[
+    #:eval op-eval
+    (lens-get car-lens (cons 1 2))
+    (lens-get posn-x-lens (posn 3 4))
+  ]
+}
+
+@defproc[(lens-set [lens lens?] [target any/c] [focus any/c]) any/c]{
+  Returns an updated @racket[target] with @racket[focus] as the new focus under @racket[lens].
+  @examples[
+    #:eval op-eval
+    (lens-set car-lens (cons 1 2) #t)
+    (lens-set posn-x-lens (posn 3 4) 9)
+  ]
+}
+
+@defproc[(lens-modify [lens lens?] [target any/c] [proc (-> any/c any/c)]) any/c]{
+  Returns an updated @racket[target] with @racket[proc] applied to the focus under @racket[lens].
+  @examples[
+    #:eval op-eval
+    (lens-modify car-lens (cons 1 2) sub1)
+    (lens-modify posn-x-lens (posn 3 4) -)
+  ]
+}
+
+@defproc[(lens-compose [lens lens?] ...) lens?]{
+  Compose lenses like @racket[optic-compose].
+  @examples[
+    #:eval op-eval
+    (struct tree [val children] #:transparent)
+    (define tree-first-child-lens (lens-compose (struct-lens tree children) car-lens))
+    (lens-set tree-first-child-lens
+               (tree 1 (list (tree 2 '()) (tree 3 '())))
+               (tree #t '()))
+    (define second-lens (lens-compose cdr-lens car-lens))
+    (lens-set second-lens (list 1 2) #t)
+    (define first-of-second-lens (lens-compose second-lens car-lens))
+    (lens-set first-of-second-lens (list 1 (list 2 3)) #t)
+  ]
+}
+
+@subsubsection{Library Lenses}
+
+@defthing[identity-lens lens?]{
+  A lens that focuses on the entire target. The identity of @racket[lens-compose].
+  @examples[
+    #:eval op-eval
+    (lens-get identity-lens 1)
+    (lens-set identity-lens 1 2)
+    (lens-modify identity-lens 1 add1)
+  ]
+}
+
+@defthing[car-lens lens?]{
+  A lens that focuses on the @racket[car] of a pair.
+  @examples[
+    #:eval op-eval
+    (lens-get car-lens (cons 1 2))
+    (lens-set car-lens (cons 1 2) #t)
+  ]
+}
+
+@defthing[cdr-lens lens?]{
+  A lens that focuses on the @racket[cdr] of a pair.
+  @examples[
+    #:eval op-eval
+    (lens-get cdr-lens (cons 1 2))
+    (lens-set cdr-lens (cons 1 2) #t)
+  ]
+}
+
+@defthing[caar-lens lens?]{
+  A lens that focuses on the @racket[caar] of a pair.
+}
+
+@defthing[cadr-lens lens?]
+@defthing[cdar-lens lens?]
+@defthing[cddr-lens lens?]
+
+@defform[
+  (struct-lens struct-id field-id maybe-parent)
+  #:grammar ([maybe-parent (code:line) (code:line #:parent parent-struct-id)])
+]{
+  A lens that focuses on a field of a struct. Supply @racket[#:parent] if the field is a field of a supertype.
+  @examples[
+    #:eval op-eval
+    (struct posn [x y] #:transparent)
+    (define posn-x-lens (struct-lens posn x))
+    (lens-get posn-x-lens (posn 3 4))
+    (lens-set posn-x-lens (posn 3 4) 9)
+    (struct posn3 posn [z] #:transparent)
+    (define posn3-z-lens (struct-lens posn3 z))
+    (define posn3-x-lens (struct-lens posn3 x #:parent posn))
+    (lens-set posn3-z-lens (posn3 1 2 3) 9)
+    (lens-set posn3-x-lens (posn3 1 2 3) 9)
+    (lens-set posn-x-lens (posn3 1 2 3) 9)
+  ]
+  If the supertype is not supplied for fields of supertypes, an update will yield an instance of the supertype.
+}
+
+@subsubsection{Generic Lens Interface}
+
+@defidform[gen:lens]{
+  A generic interface for lenses.
+  @examples[
+    #:eval op-eval
+    (struct make-lens (getter setter)
+      #:methods gen:lens
+      [(define (lens-get lens target) ((make-lens-getter lens) target))
+       (define (lens-set lens target focus)
+         ((make-lens-setter lens) target focus))])
+  ]
 }
