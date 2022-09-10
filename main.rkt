@@ -1,5 +1,4 @@
 #lang racket
 
-(require "./private/expander.rkt")
-(provide
- (all-from-out "./private/expander.rkt"))
+(require "./update.rkt" "./optics.rkt")
+(provide (all-from-out "./update.rkt" "./optics.rkt"))
