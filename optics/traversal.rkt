@@ -8,7 +8,7 @@
  ; traversal predicate
  traversal?
  #;(-> (-> (-> focus/c focus/c) target/c target/c)
-       (-> target/c (sequence/c focus/c))
+       (-> (-> focus/c any/c any/c) any/c target/c any/c)
        traversal?)
  ; Create a traversal from a mapping function and a function that generates a sequence of all foci
  ; The order of arguments goes against the convention of the lens library, but matches the convention of
@@ -16,8 +16,15 @@
  ; example:
  #;(define list-map-traversal (make-traversal map foldl))
  make-traversal
- ; traversal that focuses on all elements of a list
+ ; traversal that focuses on all elements of a list.
  list-traversal
+ ; traversal that focuses on all elements of a vector.
+ vector-traversal
+ ; traversal that focuses on the leaves of a rose tree.
+ ; A rose-tree is a non-list or a (listof rose-tree)
+ rose-traversal
+ ; A traversal that focuses on the target if it is not #f, and has no focus otherwise.
+ maybe-traversal
  #;(-> traversal? target/c (-> focus/c focus/c) target/c)
  ; apply a procedure to each focus and return the updated target
  traversal-modify
@@ -32,7 +39,7 @@
 
 
 
-(require racket/generic)
+(require racket/generic racket/generator)
 
 
 
@@ -57,11 +64,57 @@
 ; traversal that focuses on the target itself
 (define identity-traversal (make-traversal (λ (proc v) (proc v)) (λ (proc init v) (proc v init))))
 
+#;(-> (-> any/c any/c) rose? rose?)
+; map over the leaves of a rose tree.
+(define (rose-map proc rose)
+  (if (list? rose)
+      (map (λ (child) (rose-map proc child)) rose)
+      (proc rose)))
+
+#;(-> (-> any/c any/c any/c) any/c rose? any/c)
+; foldl over the leaves of the rose tree.
+(define (rose-foldl proc init rose)
+  (for/fold ([acc init])
+            ([element (rose->sequence rose)])
+    (proc element acc)))
+
+#;(-> (rose-of A) (sequence/c A))
+; iterate the leaves of the rose tree.
+(define (rose->sequence rose)
+  (in-generator
+   (let loop ([rose rose])
+     (if (list? rose)
+         (for ([child rose]) (loop child))
+         (yield rose)))))
+
+(module+ test
+  (check-equal? (sequence->list (rose->sequence '((1 2) () (((((3)) 4))))))
+                '(1 2 3 4)))
+
+; traversal that focuses on the leaves of a rose-tree.
+; A rose is a non-list or a (listof rose).
+(define rose-traversal (make-traversal rose-map rose-foldl))
+
+; traversal that focuses on the target if it is not #f. Has no focus otherwise.
+(define maybe-traversal
+      (make-traversal
+        (lambda (proc val) (if val (proc val) val))
+        (lambda (proc init val) (if val (proc val init) init))))
+
 (module+ test
   (check-equal? (traversal-modify list-traversal '(1 2 3) add1) '(2 3 4))
   (check-equal? (traversal-foldl list-traversal '(1 2 3) cons '()) '(3 2 1))
+  (check-equal? (traversal-modify vector-traversal #(1 2 3) add1) #(2 3 4))
+  (check-equal? (traversal-foldl vector-traversal #(1 2 3) cons '()) '(3 2 1))
   (check-equal? (traversal-modify identity-traversal 1 add1) 2)
-  (check-equal? (traversal-foldl identity-traversal 1 cons '()) '(1)))
+  (check-equal? (traversal-foldl identity-traversal 1 cons '()) '(1))
+  (check-equal? (traversal-modify rose-traversal '((1) ((2 3) 4)) add1)
+                '((2) ((3 4) 5)))
+  (check-equal? (traversal->list rose-traversal '((1) ((2 3) 4))) '(1 2 3 4))
+  (check-equal? (traversal-modify maybe-traversal 1 add1) 2)
+  (check-equal? (traversal-modify maybe-traversal #f add1) #f)
+  (check-equal? (traversal-foldl maybe-traversal 1 + 0) 1)
+  (check-equal? (traversal-foldl maybe-traversal #f + 0) 0))
 
 
 

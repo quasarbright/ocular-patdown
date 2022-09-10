@@ -67,6 +67,8 @@ A @deftech{lens} is a type of @tech{optic} that has a single @tech{focus}. Lense
   it is recommended to create an updated copy of the original target rather than mutating it.
 }
 
+@section{Lens Operations}
+
 @defproc[(lens-get [lens lens?] [target any/c]) any/c]{
   Gets the focus from @racket[target] under @racket[lens].
   @examples[
