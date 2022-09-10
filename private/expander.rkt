@@ -78,16 +78,6 @@
                    #:description "update pattern macro"
                    #:binding-space pattern-update)
 
-  (nonterminal clause
-               #:description "matching clause"
-                [p:pat e:expr]
-                #:binding
-                ; this extra scope is a hack to prevent use-site scopes.
-                ; the racket expander doesn't add a use-site scope if the use-site is in a separate scope from the macro definition.
-                ; if there were use-site scopes added, bindings in macro patterns like (cons a d) wouldn't be in scope in expression positions.
-                ; using recursive, export, and re-export might also work.
-                {(nest-one p (host e))})
-
   (nonterminal pat-top
                #:description "pattern"
                p:pat
@@ -144,7 +134,7 @@
 
 ; on-fail is the expression to evaluate upon failure. not a thunk.
 (define-host-interface/expression (update* target:expr p:pat body:expr on-fail:expr)
-  #:binding [(nest-one p (host body))]
+  #:binding {(nest-one p (host body))}
   #`(let ([on-fail-proc (thunk on-fail)]
           [target-v target])
       #,(compile-validate-target #'target-v #'p
