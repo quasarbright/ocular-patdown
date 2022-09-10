@@ -11,7 +11,7 @@
          get
          #;(-> lens? any/c any/c)
          ; set the value
-         set
+         optic-set!
          #;(-> lens? (-> any/c any/c) any/c)
          ; apply a function to update the value(s)
          modify!
@@ -198,7 +198,7 @@
           #:with var^ (compile-binder! #'var)
           #'(let-syntax ([var^ (make-set!-transformer
                                 (syntax-parser
-                                  [(set! id:id val) #'(set current-optic val)]
+                                  [(set! id:id val) #'(optic-set! current-optic val)]
                                   [id:id #'current-optic]))])
               body)]
          [_
@@ -221,7 +221,7 @@
 ; retrieve the focus of the current target under 'optic'
 (define (get optic) (optic-get optic (current-update-target)))
 ; set the focus of the current target under 'optic'
-(define (set optic focus)
+(define (optic-set! optic focus)
   (current-update-target (optic-set optic (current-update-target) focus))
   (current-update-target))
 ; apply a function to update the focus of the current target under 'optic'
@@ -233,27 +233,27 @@
 
 (module+ test
   ; you can set values
-  (check-equal? (update (list 1 2) [(list a b) (set a #t) (set b #f)])
+  (check-equal? (update (list 1 2) [(list a b) (optic-set! a #t) (optic-set! b #f)])
                 (list #t #f))
   ; you can apply functions to modify values
   (check-equal? (update (list 1 2) [(list a b) (modify! b add1)])
                 '(1 3))
   ; you can nest patterns to perform deep updates
-  (check-equal? (update '(1 (2 3)) [(list a (list b c)) (set c #t)])
+  (check-equal? (update '(1 (2 3)) [(list a (list b c)) (optic-set! c #t)])
                 '(1 (2 #t)))
   ; get, set, etc. are procedures and can be used in any expression position inside of an update form
   (check-equal? (update (list 7 8 9)
                         [(list a b c)
-                         (set a 1)
-                         (set b (get a))
+                         (optic-set! a 1)
+                         (optic-set! b (get a))
                          (define x (get c))
-                         (set c (add1 x))])
+                         (optic-set! c (add1 x))])
                 (list 1 1 10))
   ; struct pattern
   (struct posn [x y] #:transparent)
-  (check-equal? (update (posn 1 2) [(struct-field posn x a) (set a 3)]) (posn 3 2))
+  (check-equal? (update (posn 1 2) [(struct-field posn x a) (optic-set! a 3)]) (posn 3 2))
   ; without a pattern after the field name, the field's optic is bound to the name of the field
-  (check-equal? (update (posn 1 2) [(struct-field posn x) (set x 3)]) (posn 3 2))
+  (check-equal? (update (posn 1 2) [(struct-field posn x) (optic-set! x 3)]) (posn 3 2))
   ; list-of pattern creates a traversal which can modify all elements
   (check-equal? (update (list 1 2 3 4) [(list-of a) (modify! a -)]) '(-1 -2 -3 -4))
   ; you can fold(l) the elements of a traversal
@@ -279,22 +279,22 @@
                (list -1 2))
   (test-equal? "multi-clause"
                (update (list 1 2)
-                       [(struct-field posn x) (set x 3)]
-                       [(list a b) (set a 4)])
+                       [(struct-field posn x) (optic-set! x 3)]
+                       [(list a b) (optic-set! a 4)])
                (list 4 2))
   (test-equal? "use current-update-target"
                (update (list 1 2) [(list a b) (optic-set a (current-update-target) 3)])
                '(3 2))
-  (check-equal? (update (list 1 2) [(cons a (cons b _)) (set a #t) (set b #f)])
+  (check-equal? (update (list 1 2) [(cons a (cons b _)) (optic-set! a #t) (optic-set! b #f)])
                 (list #t #f))
-  (check-equal? (update (list 1 2) [(list a b) (modify! a -) (set b #t)]) (list -1 #t))
+  (check-equal? (update (list 1 2) [(list a b) (modify! a -) (optic-set! b #t)]) (list -1 #t))
   (check-equal? (update (posn (cons 1 2) 3) [(struct-field posn x (cons a b)) (modify! a -) (modify! b sqr)]) (posn (cons -1 4) 3))
   (check-equal? (update '((1 2) (3 4) (5 6)) [(list-of (list a _)) (modify! a -)]) '((-1 2) (-3 4) (-5 6)))
   (check-equal? (update '(((1 2) (3)) ((4) ())) [(list-of (list-of (list-of a))) (modify! a -)]) '(((-1 -2) (-3)) ((-4) ())))
   (test-equal? "update in an update works"
                (update '(1 (2 3)) [(list a b)
-                                    (set b (update (get b) [(list c d) (set d 4)]))
-                                    (set a #t)])
+                                    (optic-set! b (update (get b) [(list c d) (optic-set! d 4)]))
+                                    (optic-set! a #t)])
                 '(#t (2 4)))
   (test-equal? "iso composes"
                (update '(foo bar) [(cons (iso symbol? symbol->string string->symbol str) _) (modify! str string-upcase)])
