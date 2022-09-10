@@ -9,7 +9,7 @@
 @defmodule[ocular-patdown/optics]
 
 The @racketmodname[ocular-patdown/optics] module provides all bindings of
-@racketmodname[ocular-patdown/optics/lens], @racketmodname[ocular-patdown/optics/traversal], @racketmodname[ocular-patdown/optics/isomorhism], and @racketmodname[ocular-patdown/optics/prism],
+@racketmodname[ocular-patdown/optics/lens], @racketmodname[ocular-patdown/optics/traversal], @racketmodname[ocular-patdown/optics/isomorphism], and @racketmodname[ocular-patdown/optics/prism],
 in addition to the bindings documented here.
 
 

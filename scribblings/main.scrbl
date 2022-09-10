@@ -18,4 +18,5 @@ The @racket[update] form does not require knowledge of optics to use.
 @include-section[(lib "ocular-patdown/scribblings/optics.scrbl")]
 @include-section[(lib "ocular-patdown/scribblings/lens.scrbl")]
 @include-section[(lib "ocular-patdown/scribblings/traversal.scrbl")]
+@include-section[(lib "ocular-patdown/scribblings/isomorphism.scrbl")]
 @include-section[(lib "ocular-patdown/scribblings/update.scrbl")]

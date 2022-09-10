@@ -48,15 +48,19 @@ iso-modify handles the conversions so you can focus on the interesting stuff.
  ; Alias for traversal-modify
  iso-modify
   #;(-> iso? iso?)
- ; create a new iso with swapped forward and backward converters
+ ; create a new iso with swapped forward and backward converters.
  iso-reverse
  #;(-> iso? ... iso?)
  ; compose isomorphisms. Ex:
  #;(define a<->c (iso-compose a<->b b<->c))
  iso-compose
- ; isomorphism where the target is a symbol and the focus is a string
+ ; isomorphism where the target is a symbol and the focus is a string.
  symbol<->string
- ; isomorphism where the target is the focus
+ ; isomorphism where the target is a vector and the focus is a list.
+ vector<->list
+ ; isomorphism where the target is a list and the focus is the reversed list.
+ list-reverse-iso
+ ; isomorphism where the target is the focus.
  identity-iso)
 (module+ test (require rackunit))
 
@@ -92,7 +96,9 @@ iso-modify handles the conversions so you can focus on the interesting stuff.
      (proc (iso-forward iso target) init))])
 
 (define list<->vector (make-iso list->vector vector->list))
+(define vector<->list (make-iso vector->list list->vector))
 (define symbol<->string (make-iso symbol->string string->symbol))
+(define list-reverse-iso (make-iso reverse reverse))
 (define identity-iso (make-iso identity identity))
 
 (module+ test
@@ -102,7 +108,10 @@ iso-modify handles the conversions so you can focus on the interesting stuff.
   (check-equal? (iso-forward identity-iso 1) 1)
   (check-equal? (iso-backward identity-iso 1) 1)
   (check-pred (conjoin iso? lens? prism? traversal?) list<->vector)
-  (check-equal? (traversal? list<->vector) #t))
+  (check-equal? (traversal? list<->vector) #t)
+  (check-equal? (iso-modify vector<->list #(1 2 3) (lambda (l) (map add1 l))) #(2 3 4))
+  (check-equal? (iso-forward list-reverse-iso '(1 2 3)) '(3 2 1))
+  (check-equal? (iso-backward list-reverse-iso '(1 2 3)) '(3 2 1)))
 
 (define iso-modify traversal-modify)
 
@@ -112,8 +121,8 @@ iso-modify handles the conversions so you can focus on the interesting stuff.
 (define (iso-reverse iso) (make-iso (λ (a) (iso-backward iso a)) (λ (a) (iso-forward iso a))))
 
 (module+ test
-  (define vector<->list (iso-reverse list<->vector))
-  (check-equal? (iso-forward vector<->list #(1)) '(1)))
+  (define vector<->list* (iso-reverse list<->vector))
+  (check-equal? (iso-forward vector<->list* #(1)) '(1)))
 
 ; compose two isomorphisms
 (define (iso-compose2 a<->b b<->c)
