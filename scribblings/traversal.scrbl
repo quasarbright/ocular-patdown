@@ -1,6 +1,6 @@
 #lang scribble/manual
 
-@require[scribble/example @for-label[racket ocular-patdown/optics/traversal ocular-patdown/optics/lens]]
+@require[scribble/example @for-label[racket ocular-patdown/optics/traversal ocular-patdown/optics/lens ocular-patdown/optics]]
 @(define op-eval (make-base-eval))
 @examples[#:hidden #:eval op-eval (require (except-in racket set) ocular-patdown)]
 
@@ -8,7 +8,7 @@
 
 @defmodule[ocular-patdown/optics/traversal]
 
-A @deftech{traversal} is an @tech{optic} that can have 0 or more @tech[#:key "focus"]{foci}. Updating with a traversal is like using @racket[map].
+A @deftech{traversal} is an @tech{optic} that can have zero or more @tech[#:key "focus"]{foci}. Updating with a traversal is like using @racket[map].
 
 @examples[
   #:eval op-eval
@@ -75,6 +75,18 @@ All @tech{lens}es are traversals, but not all traversals are lenses.
   ]
 }
 
+@defproc[(traversal-compose [traversal traversal?] ...) traversal?]{
+  Compose traversals like @racket[optic-compose].
+  @examples[
+    #:eval op-eval
+    (define lol-traversal (traversal-compose list-traversal list-traversal))
+    (traversal-modify lol-traversal '((1 2 3) () (4)) add1)
+    (traversal-modify (traversal-compose list-traversal maybe-traversal car-lens)
+                      '(#f (10 20 30) #f (40 50))
+                      sqr)
+  ]
+}
+
 @section{Library Traversals}
 
 @defthing[list-traversal traversal?]{
@@ -113,9 +125,23 @@ All @tech{lens}es are traversals, but not all traversals are lenses.
     (traversal-modify maybe-traversal #f add1)
     (traversal->list maybe-traversal 1)
     (traversal->list maybe-traversal #f)
+    (traversal-modify (traversal-compose list-traversal maybe-traversal car-lens)
+                      '(#f (10 20 30) #f (40 50))
+                      sqr)
   ]
 }
 
 @section{Generic Traversal Interface}
 
-@;TODO
+@defidform[gen:traversal]{
+  A generic interface for traversals.
+  @examples[
+    #:eval op-eval
+    (struct make-traversal (map foldl)
+      #:methods gen:traversal
+      [(define (traversal-modify t target proc)
+         ((make-traversal-map t) proc target))
+       (define (traversal-foldl t target proc init)
+         ((make-traversal-foldl t) proc init target))])
+  ]
+}
