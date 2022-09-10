@@ -1,10 +1,9 @@
 #lang scribble/manual
-@require[scribble/example @for-label[(except-in racket set) ocular-patdown/optics/lens ocular-patdown/optics ocular-patdown/update]]
+@require[scribble/example @for-label[(except-in racket set) ocular-patdown/optics/lens ocular-patdown/optics/traversal ocular-patdown/optics/isomorphism ocular-patdown/optics ocular-patdown/update]]
 @(define op-eval (make-base-eval))
 @examples[#:hidden #:eval op-eval (require (except-in racket set) ocular-patdown)]
 
 @title{Pattern-based Updating}
-@author{Mike Delmonaco}
 
 @defmodule[ocular-patdown/update]
 
@@ -18,7 +17,24 @@
 ([clause [pat body ...+]])
 ]
 
-Like @racket[match], but can be used for immutably updating values.
+Like @racket[match], but binds @tech{optic}s. Patterns can be thought of as trees of optic compositions (see @racket[optic-compose]) with variables as leaves, binding composed optics.
+
+@examples[
+ #:eval op-eval
+ (update (list 1 2 3) [(list a b c) b])
+]
+
+Use @racket[current-update-target] to use the optics on the target of the update.
+
+@examples[
+  #:eval op-eval
+ (update (list 1 2 3) [(list a b c) (optic-get b (current-update-target))])
+ (update (list 1 2 3) [(list a b c) (optic-set b (current-update-target) #t)])
+]
+
+This is cumbersome, especially when you want to perform multiple updates in sequence.
+As such, the library provides helpers like @racket[get] and @racket[set] which thread the parameter
+implicitly. Operations like @racket[set] have the side effect of mutating the value of the parameter.
 
 @examples[
 #:eval op-eval
@@ -34,12 +50,6 @@ Like @racket[match], but can be used for immutably updating values.
 (update (list 1 2 3)
   [(list a b) (error "boom")]
   [(list a b c) (set c 4)])
-]
-
-You can also use it to get values.
-
-@examples[
-#:eval op-eval
 (update (list 1 2) [(list a b) (get a)])
 (update (list 1 2) [(list a b) (set a (+ 4 (get b)))])
 ]
@@ -101,7 +111,7 @@ Match all the patterns.
 
 @defform[(cons car-pat cdr-pat)]{
 
-Matches pairs. @racket[car-pat] gets matched on the @racket[car], and @racket[cdr-pat] gets matched on the @racket[cdr].
+Matches pairs. @racket[car-pat] gets matched on the @racket[car] (composes the @racket[car-lens] optic), and @racket[cdr-pat] gets matched on the @racket[cdr] (composes the @racket[cdr-lens] optic).
 
 @examples[
     #:eval op-eval
@@ -112,7 +122,7 @@ Matches pairs. @racket[car-pat] gets matched on the @racket[car], and @racket[cd
 
 @defform[(list pat ...)]{
 
-Matches a list with as many elements as @racket[pat]s. Matches each element against its corresponding pattern.
+Matches a list with as many elements as @racket[pat]s. Matches each element against its corresponding pattern. Composes @racket[car-lens] and @racket[cdr-lens] appropriately.
 
 @examples[
 #:eval op-eval
@@ -122,9 +132,7 @@ Matches a list with as many elements as @racket[pat]s. Matches each element agai
 
 @defform[(list-of pat)]{
 
-@;TODO mention traversals
-Matches a list. Matches each element against @racket[pat], but optics bounds by @racket[pat] focus on all elements, not just one element.
-It sort of "maps" @racket[pat] over the elements of the list. It is also similar to @racket[pat ...] in @racket[match] in that variables of @racket[pat] get bound to lists.
+Matches a list. Matches each element against @racket[pat], but optics bounds by @racket[pat] focus on all elements, not just one element. Composes @racket[list-traversal].
 
 @examples[
 #:eval op-eval
@@ -139,7 +147,7 @@ It sort of "maps" @racket[pat] over the elements of the list. It is also similar
  (struct-field struct-name field-name))
 ]{
 
-Matches a struct which is an instance of the struct type named @racket[struct-id]. Focuses on the field @racket[field-name] and matches @racket[pat] against its value.
+Matches a struct which is an instance of the struct type named @racket[struct-id]. Focuses on the field @racket[field-name] and matches @racket[pat] against its value. Composes a @racket[struct-lens].
 
 The second form is shorthand for @racket[(struct-field struct-name field-name field-name)].
 
@@ -164,24 +172,16 @@ Naively trying to use a super type's struct field to perform an update on an ins
 
 @defform[
 (iso target? forward backward pat)
-#:contracts ([target? (-> any/c boolean?)] [forward (-> A B)] [backward (-> B A)])
+#:contracts ([target? (-> any/c boolean?)] [forward (-> any/c any/c)] [backward (-> any/c any/c)])
 ]{
 
-Matches a value that satisfies @racket[target?]. @racket[target?] should recognize values of type @racket[A]. @racket[forward] should convert values from @racket[A] to @racket[B], and @racket[backward] the inverse.
-This matches values of type @racket[A] and matches @racket[pat] against its equivalent value of type @racket[B] according to @racket[forward]. Useful for treating a value of one type as another.
+Matches a value that satisfies @racket[target?]. Matches @racket[pat] against the result of @racket[forward] applied to the target. Composes the isomorphism @racket[(make-iso forward backward)].
+As such, @racket[forward] and @racket[backward] should be inverse functions of each other. Useful for treating values of one type as values of another, equivalent type.
 
 @examples[
 #:eval op-eval
 (update 'foo [(iso symbol? symbol->string string->symbol str) (modify str string-upcase)])
 ]
-
-@racket[backward] must be the inverse of @racket[forward]. Specifically, for any value @racket[v]
-
-@racketblock[
-(when (target? v) (equal? v (backward (forward v))))
-]
-
-If @racket[(target? v)] is true, @racket[v] must be equal to @racket[(backward (forward v))] for some reasonable definition of equality.
 }
 
 @defform[
@@ -189,8 +189,8 @@ If @racket[(target? v)] is true, @racket[v] must be equal to @racket[(backward (
 #:contracts ([target? (-> any/c boolean?)] [optic-expr optic?])
 ]{
 
-Matches a value that satisfies @racket[target?]. Matches @racket[pat] against the focus or foci of @racket[optic-expr], where @racket[optic-expr] is an @tech{optic}.
-This is useful for using optics as patterns and defining new patterns using optics and @racket[define-pattern-syntax]. In fact, most of the standard patterns were defined
+Matches a value that satisfies @racket[target?]. Matches @racket[pat] against the @tech{focus} or foci of @racket[optic-expr], where @racket[optic-expr] is an @tech{optic}. Composes @racket[optic-expr].
+This is useful for using optics as patterns and defining new patterns using optics and @racket[define-pattern-syntax]. In fact, most of the standard patterns are defined
 this way.
 
 @examples[
