@@ -196,7 +196,11 @@
          #:literal-sets (pattern-literals)
          [var:id
           #:with var^ (compile-binder! #'var)
-          #'(let ([var^ current-optic]) body)]
+          #'(let-syntax ([var^ (make-set!-transformer
+                                (syntax-parser
+                                  [(set! id:id val) #'(set current-optic val)]
+                                  [id:id #'current-optic]))])
+              body)]
          [_
           #'body]
          [(optic target? o p)
