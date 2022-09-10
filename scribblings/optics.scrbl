@@ -8,7 +8,12 @@
 
 @defmodule[ocular-patdown/optics]
 
-Under the hood, the @racket[update] form uses @deftech{optic}s. An optic is a first class getter and (immutable) setter for some @deftech{target} type and a @deftech{focus} or several foci within it.
+The @racketmodname[ocular-patdown/optics] module provides all bindings of
+@racketmodname[ocular-patdown/lens], @racketmodname[ocular-patdown/traversal], @racketmodname[ocular-patdown/isomorhism], and @racketmodname[ocular-patdown/prism],
+in addition to the bindings documented here.
+
+
+An optic is a first class getter and (immutable) setter for some @deftech{target} type and a @deftech{focus} or several foci within it.
 For example, @racket[car-lens] is an optic that targets pairs and focuses on a pair's @racket[car]. This optic can be used to get the @racket[car] of a pair, or return a new pair
 with an updated @racket[car].
 
