@@ -14,7 +14,7 @@
          set
          #;(-> lens? (-> any/c any/c) any/c)
          ; apply a function to update the value(s)
-         modify
+         modify!
          #;(-> lens? (-> A B B) B B)
          ; foldl over the values
          fold
@@ -225,7 +225,7 @@
   (current-update-target (optic-set optic (current-update-target) focus))
   (current-update-target))
 ; apply a function to update the focus of the current target under 'optic'
-(define (modify optic func)
+(define (modify! optic func)
   (current-update-target (traversal-modify optic (current-update-target) func))
   (current-update-target))
 ; fold over the current target's foci under 'traversal'
@@ -236,7 +236,7 @@
   (check-equal? (update (list 1 2) [(list a b) (set a #t) (set b #f)])
                 (list #t #f))
   ; you can apply functions to modify values
-  (check-equal? (update (list 1 2) [(list a b) (modify b add1)])
+  (check-equal? (update (list 1 2) [(list a b) (modify! b add1)])
                 '(1 3))
   ; you can nest patterns to perform deep updates
   (check-equal? (update '(1 (2 3)) [(list a (list b c)) (set c #t)])
@@ -255,7 +255,7 @@
   ; without a pattern after the field name, the field's optic is bound to the name of the field
   (check-equal? (update (posn 1 2) [(struct-field posn x) (set x 3)]) (posn 3 2))
   ; list-of pattern creates a traversal which can modify all elements
-  (check-equal? (update (list 1 2 3 4) [(list-of a) (modify a -)]) '(-1 -2 -3 -4))
+  (check-equal? (update (list 1 2 3 4) [(list-of a) (modify! a -)]) '(-1 -2 -3 -4))
   ; you can fold(l) the elements of a traversal
   (check-equal? (update (list 1 2 3) [(list-of a) (fold a cons '())])
                 (list 3 2 1))
@@ -264,18 +264,18 @@
   ; you can access the optic directly
   (check-pred lens? (update '(1 2) [(list a b) a]))
   (test-equal? "can use iso to treat an X as a Y"
-               (update 'foo [(iso symbol? symbol->string string->symbol str) (modify str string-upcase)])
+               (update 'foo [(iso symbol? symbol->string string->symbol str) (modify! str string-upcase)])
                'FOO)
   (test-equal? "can specify an optic directly"
-               (update (list 1 2) [(optic list? list-traversal a) (modify a -)])
+               (update (list 1 2) [(optic list? list-traversal a) (modify! a -)])
                (list -1 -2))
   (test-equal? "and pattern"
                (update (list 1 2) [(and2 (list-of n) (list a b))
-                                   (modify n -)
-                                   (modify a number->string)])
+                                   (modify! n -)
+                                   (modify! a number->string)])
                (list "-1" -2))
   (test-equal? "? pattern"
-               (update (list 1 2) [(list (and2 (? odd?) a) (? even?)) (modify a -)])
+               (update (list 1 2) [(list (and2 (? odd?) a) (? even?)) (modify! a -)])
                (list -1 2))
   (test-equal? "multi-clause"
                (update (list 1 2)
@@ -287,23 +287,23 @@
                '(3 2))
   (check-equal? (update (list 1 2) [(cons a (cons b _)) (set a #t) (set b #f)])
                 (list #t #f))
-  (check-equal? (update (list 1 2) [(list a b) (modify a -) (set b #t)]) (list -1 #t))
-  (check-equal? (update (posn (cons 1 2) 3) [(struct-field posn x (cons a b)) (modify a -) (modify b sqr)]) (posn (cons -1 4) 3))
-  (check-equal? (update '((1 2) (3 4) (5 6)) [(list-of (list a _)) (modify a -)]) '((-1 2) (-3 4) (-5 6)))
-  (check-equal? (update '(((1 2) (3)) ((4) ())) [(list-of (list-of (list-of a))) (modify a -)]) '(((-1 -2) (-3)) ((-4) ())))
+  (check-equal? (update (list 1 2) [(list a b) (modify! a -) (set b #t)]) (list -1 #t))
+  (check-equal? (update (posn (cons 1 2) 3) [(struct-field posn x (cons a b)) (modify! a -) (modify! b sqr)]) (posn (cons -1 4) 3))
+  (check-equal? (update '((1 2) (3 4) (5 6)) [(list-of (list a _)) (modify! a -)]) '((-1 2) (-3 4) (-5 6)))
+  (check-equal? (update '(((1 2) (3)) ((4) ())) [(list-of (list-of (list-of a))) (modify! a -)]) '(((-1 -2) (-3)) ((-4) ())))
   (test-equal? "update in an update works"
                (update '(1 (2 3)) [(list a b)
                                     (set b (update (get b) [(list c d) (set d 4)]))
                                     (set a #t)])
                 '(#t (2 4)))
   (test-equal? "iso composes"
-               (update '(foo bar) [(cons (iso symbol? symbol->string string->symbol str) _) (modify str string-upcase)])
+               (update '(foo bar) [(cons (iso symbol? symbol->string string->symbol str) _) (modify! str string-upcase)])
                '(FOO bar))
   ; regression test:
   ; structure check was broken for list-of. structure check only really worked for lenses.
   ; it used to run the nested structure check on the list itself, not each element.
   (test-equal? "list-of structs works"
-               (update (list (posn 1 2) (posn 3 4)) [(list-of (struct-field posn x)) (modify x -)])
+               (update (list (posn 1 2) (posn 3 4)) [(list-of (struct-field posn x)) (modify! x -)])
                (list (posn -1 2) (posn -3 4)))
   (test-equal? "failure in a list-of"
                (update (list 1 2 (posn 3 4))

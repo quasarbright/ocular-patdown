@@ -38,15 +38,15 @@ implicitly. Operations like @racket[set] have the side effect of mutating the va
 
 @examples[
 #:eval op-eval
-(update (list 1 2 3) [(list a b c) (set a #t) (modify b -)])
+(update (list 1 2 3) [(list a b c) (set a #t) (modify! b -)])
 (struct posn [x y] #:transparent)
 (update (posn 1 2) [(struct-field posn x x-value) (set x-value 3)])
 (update (list (posn 1 2) (posn 3 4))
   [(list (struct-field posn x x-value) p)
-   (modify x-value -)
+   (modify! x-value -)
    (set p (posn 5 6))])
 (update (list (posn 1 2) (posn 3 4) (posn 5 6))
-  [(list-of (struct-field posn x x-value)) (modify x-value -)])
+  [(list-of (struct-field posn x x-value)) (modify! x-value -)])
 (update (list 1 2 3)
   [(list a b) (error "boom")]
   [(list a b c) (set c 4)])
@@ -126,7 +126,7 @@ Matches a list with as many elements as @racket[pat]s. Matches each element agai
 
 @examples[
 #:eval op-eval
-(update (list 1 2) [(list a b) (modify b -)])
+(update (list 1 2) [(list a b) (modify! b -)])
 ]
 }
 
@@ -136,9 +136,9 @@ Matches a list. Matches each element against @racket[pat], but optics bounds by 
 
 @examples[
 #:eval op-eval
-(update (list 1 2 3 4) [(list-of n) (modify n sqr)])
-(update '((1 2 3) (4 5 6) () (7)) [(list-of (list-of n)) (modify n sqr)])
-(update (list (posn 1 2) (posn 3 4)) [(list-of (struct-field posn x)) (modify x -)])
+(update (list 1 2 3 4) [(list-of n) (modify! n sqr)])
+(update '((1 2 3) (4 5 6) () (7)) [(list-of (list-of n)) (modify! n sqr)])
+(update (list (posn 1 2) (posn 3 4)) [(list-of (struct-field posn x)) (modify! x -)])
 ]
 }
 
@@ -180,7 +180,7 @@ As such, @racket[forward] and @racket[backward] should be inverse functions of e
 
 @examples[
 #:eval op-eval
-(update 'foo [(iso symbol? symbol->string string->symbol str) (modify str string-upcase)])
+(update 'foo [(iso symbol? symbol->string string->symbol str) (modify! str string-upcase)])
 ]
 }
 
@@ -195,13 +195,13 @@ this way.
 
 @examples[
 #:eval op-eval
-(update (cons 1 2) [(optic cons? car-lens a) (modify a sub1)])
+(update (cons 1 2) [(optic cons? car-lens a) (modify! a sub1)])
 ]
 }
 
 @section{Getter and Updater Utilities}
 
-@racket[get], @racket[set], and @racket[modify] are just ordinary procedures that operate on optics. The only thing that is special about them is that they know about the current target of an @racket[update].
+@racket[get], @racket[set], and @racket[modify!] are just ordinary procedures that operate on optics. The only thing that is special about them is that they know about the current target of an @racket[update].
 
 @defproc[(get [optic lens?]) any/c]{
   Gets the focus of @racket[optic] using @racket[current-update-target].
@@ -226,14 +226,14 @@ this way.
   ]
 }
 
-@defproc[(modify [optic optic?] [proc (-> any/c any/c)]) any/c]{
+@defproc[(modify! [optic optic?] [proc (-> any/c any/c)]) any/c]{
   Updates the focus of @racket[optic] by applying @racket[proc], using @racket[current-update-target]. Also mutates @racket[current-update-target] and returns its new value.
 
   @examples[
     #:eval op-eval
-    (update (cons 1 2) [(cons a _) (modify a sub1)])
+    (update (cons 1 2) [(cons a _) (modify! a sub1)])
     (current-update-target (cons 1 2))
-    (modify cdr-lens sqr)
+    (modify! cdr-lens sqr)
     (current-update-target)
   ]
 }
@@ -280,7 +280,7 @@ this way.
       (syntax-rules ()
         [(posn x-pat y-pat)
          (and (struct-field posn x x-pat) (struct-field posn y y-pat))]))
-    (update (posn 1 2) [(posn a b) (set a 4) (modify b -)])
+    (update (posn 1 2) [(posn a b) (set a 4) (modify! b -)])
   ]
   }
 }
