@@ -21,7 +21,6 @@ to create the target from the focus alone.
  ; Create a prism from a projector and an injector
  ; The projector may return (prism-absent) if the focus is not present.
  make-prism
- identity-prism
  string-number-prism
  guard-prism
  prism-project
@@ -40,7 +39,7 @@ to create the target from the focus alone.
   (prism-inject prism focus))
 
 (struct prism-absent [] #:transparent)
-(define default-failure-result (prism-absent))
+(define default-failure-result (λ () (error 'prism-project "focus not present in prism")))
 
 (struct make-prism (project inject)
   #:methods gen:prism
@@ -102,13 +101,13 @@ to create the target from the focus alone.
 
 (module+ test
   (check-equal? (prism-project string-number-prism "1") 1)
-  (check-equal? (prism-project string-number-prism "foo") (prism-absent))
+  (check-equal? (prism-project string-number-prism "foo" (prism-absent)) (prism-absent))
   (check-equal? (prism-inject string-number-prism 1) "1")
   (check-equal? (prism-project mynat-prism 1) '(()))
-  (check-equal? (prism-project mynat-prism -1) (prism-absent))
+  (check-equal? (prism-project mynat-prism -1 (prism-absent)) (prism-absent))
   (check-equal? (prism-inject mynat-prism '(())) 1)
   (check-equal? (prism-project rectangle-square-prism (rectangle 1 1)) (square 1))
-  (check-equal? (prism-project rectangle-square-prism (rectangle 1 3)) (prism-absent))
+  (check-equal? (prism-project rectangle-square-prism (rectangle 1 3) (prism-absent)) (prism-absent))
   (check-equal? (prism-inject rectangle-square-prism (square 2)) (rectangle 2 2)))
 
 
@@ -133,15 +132,15 @@ to create the target from the focus alone.
 (define (prism-compose2 outer-prism inner-prism)
   (make-prism (λ (outer-target)
                 (prism-match outer-prism outer-target
-                             [inner-target (prism-project inner-prism inner-target)]
+                             [inner-target (prism-project inner-prism inner-target (prism-absent))]
                              [(prism-absent)]))
               (λ (inner-focus) (prism-inject outer-prism (prism-inject inner-prism inner-focus)))))
 
 (module+ test
   (define string-mynat-prism (prism-compose2 string-number-prism mynat-prism))
   (check-equal? (prism-project string-mynat-prism "1") '(()))
-  (check-equal? (prism-project string-mynat-prism "-1") (prism-absent))
-  (check-equal? (prism-project string-mynat-prism "foo") (prism-absent))
+  (check-equal? (prism-project string-mynat-prism "-1" (prism-absent)) (prism-absent))
+  (check-equal? (prism-project string-mynat-prism "foo" (prism-absent)) (prism-absent))
   (check-equal? (prism-inject string-mynat-prism '((()))) "2"))
 
 (define (prism-compose . prisms)
@@ -150,7 +149,7 @@ to create the target from the focus alone.
 (module+ test
   (define string-posint-mynat-prism (prism-compose string-number-prism (guard-prism positive?) mynat-prism))
   (check-equal? (prism-project string-posint-mynat-prism "1") '(()))
-  (check-equal? (prism-project string-posint-mynat-prism "0") (prism-absent))
+  (check-equal? (prism-project string-posint-mynat-prism "0" (prism-absent)) (prism-absent))
   (check-equal? (prism-inject string-posint-mynat-prism '(())) "1"))
 
 

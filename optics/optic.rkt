@@ -36,7 +36,7 @@
                                   string-upcase)
                 '(FOO BAR))
   (check-equal? (prism-project (optic-compose symbol<->string string-number-prism) '|1|) 1)
-  (check-equal? (prism-project (optic-compose symbol<->string string-number-prism) 'foo) (prism-absent))
+  (check-equal? (prism-project (optic-compose symbol<->string string-number-prism) 'foo (prism-absent)) (prism-absent))
   (check-equal? (prism-inject (optic-compose symbol<->string string-number-prism) 2) '|2|))
 
 (define optic-get lens-get)

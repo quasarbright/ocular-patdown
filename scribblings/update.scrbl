@@ -273,7 +273,6 @@ this way.
         (begin body-expr ...)))
   ]
 
-  @;{
   @examples[
     #:eval op-eval
     (define-pattern-syntax posn
@@ -282,5 +281,4 @@ this way.
          (and (struct-field posn x x-pat) (struct-field posn y y-pat))]))
     (update (posn 1 2) [(posn a b) (optic-set! a 4) (modify! b -)])
   ]
-  }
 }
