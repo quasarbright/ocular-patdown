@@ -2,7 +2,7 @@
 
 @require[scribble/example @for-label[racket ocular-patdown]]
 @(define op-eval (make-base-eval))
-@examples[#:hidden #:eval op-eval (require (except-in racket set) ocular-patdown)]
+@examples[#:hidden #:eval op-eval (require racket ocular-patdown)]
 
 @title[#:tag "optics-guide"]{Optics Guide}
 
@@ -150,13 +150,13 @@ traversal to perform operations like substitution, renaming, getting a set of fr
 (define (free-vars-set expr) (traversal-foldl free-var-traversal expr set-add (set)))
 (free-vars-set '(f (lambda (x) (g x))))
 (define (subst expr var replacement) (traversal-modify free-var-traversal expr (lambda (x) (if (eq? var x) replacement x))))
-(define (eval expr)
+(define (evaluate expr)
   (match expr
     [(? symbol? x) (error 'eval "unbound var ~a" x)]
     [`(lambda (,(? symbol? x)) ,body) expr]
     [(list rator rand)
-     (match (eval rator)
-       [`(lambda (,(? symbol? x)) ,body) (eval (subst body x (eval rand)))]
+     (match (evaluate rator)
+       [`(lambda (,(? symbol? x)) ,body) (evaluate (subst body x (evaluate rand)))]
          [expr (error 'eval "cannot apply non-function ~a" expr)])]))
-(eval '(((lambda (x) (lambda (y) x)) (lambda (a) a)) (lambda (b) b)))
+(evaluate '(((lambda (x) (lambda (y) x)) (lambda (a) a)) (lambda (b) b)))
 ]
