@@ -39,7 +39,7 @@
 
 
 
-(require racket/generic racket/generator)
+(require racket/generic racket/generator (for-syntax syntax/parse))
 
 
 
@@ -63,6 +63,9 @@
 
 ; traversal that focuses on the target itself
 (define identity-traversal (make-traversal (λ (proc v) (proc v)) (λ (proc init v) (proc v init))))
+
+; traversal with zero foci
+(define empty-traversal (make-traversal (λ (proc v) v) (λ (proc init v) init)))
 
 #;(-> (-> any/c any/c) rose? rose?)
 ; map over the leaves of a rose tree.
@@ -147,6 +150,88 @@
                                   '(#(1))
                                   add1)
                 '(#(2))))
+
+; traversals must have non-overlapping foci for all targets
+(define (traversal-append . traversals)
+  (foldr traversal-append2 empty-traversal traversals))
+
+(define (traversal-append2 t1 t2)
+  (make-traversal (λ (proc target) (traversal-modify t2 (traversal-modify t1 target proc) proc))
+                  (λ (proc init target) (traversal-foldl t2 target proc (traversal-foldl t1 target proc init)))))
+
+(module+ test
+  ; folded in append order
+  (check-equal? (traversal->list (traversal-append (traversal-filter even? list-traversal)
+                                                   (traversal-filter odd? list-traversal))
+                                 '(1 2 3 4))
+                '(2 4 1 3))
+  ; modify preserves order
+  (check-equal? (traversal-modify (traversal-append (traversal-filter even? list-traversal)
+                                                    (traversal-filter (λ (x) (= 1 x)) list-traversal))
+                                  '(1 2 3 4)
+                                  -)
+                '(-1 -2 3 -4)))
+
+; filters a traversal's foci
+(define (traversal-filter pred traversal)
+    (make-traversal (λ (proc target)
+                      (traversal-modify traversal
+                                        target
+                                        (λ (focus) (if (pred focus) (proc focus) focus))))
+                    (λ (proc init target)
+                      (traversal-foldl traversal
+                                       target
+                                       (λ (focus acc) (if (pred focus) (proc focus acc) acc))
+                                       init))))
+
+(module+ test
+  (define even-list-traversal (traversal-filter even? list-traversal))
+  (check-equal? (traversal->list even-list-traversal '(1 2 3 4)) '(2 4))
+  (check-equal? (traversal-modify even-list-traversal '(1 2 3 4) -) '(1 -2 3 -4)))
+
+; chooses a traversal based on `(pred target)`.
+; predicate must not depend on foci. To be more precise, no modification
+; may cause the truthiness of `(pred target)` to change.
+; `then-traversal` and `else-traversal` get evaluated each usage of the optic. This is necessary
+; to support recursively defined optics.
+(define-syntax-rule
+  (traversal-if pred then-traversal else-traversal)
+  (let ([pred-v pred])
+    (traversal-if/proc pred-v (λ () then-traversal) (λ () else-traversal))))
+
+(define (traversal-if/proc pred then-traversal-thnk else-traversal-thnk)
+  (make-traversal (λ (proc target)
+                    (traversal-modify (if (pred target) (then-traversal-thnk) (else-traversal-thnk)) target proc))
+                  (λ (proc init target)
+                    (traversal-foldl (if (pred target) (then-traversal-thnk) (else-traversal-thnk)) target proc init))))
+
+(module+ test
+  (define vector-or-list-traversal (traversal-if list? list-traversal vector-traversal))
+  (check-equal? (traversal->list vector-or-list-traversal '(1 2 3)) '(1 2 3))
+  (check-equal? (traversal->list vector-or-list-traversal #(1 2 3)) '(1 2 3))
+  (check-equal? (traversal-modify vector-or-list-traversal '(1 2 3) add1) '(2 3 4))
+  (check-equal? (traversal-modify vector-or-list-traversal #(1 2 3) add1) #(2 3 4))
+  ; recursive use, no thunk needed
+  (define rose-traversal-if (traversal-if list? (traversal-compose list-traversal rose-traversal-if) identity-traversal))
+  (check-equal? (traversal-modify rose-traversal-if '((1) ((2 3)) 4 5) add1)
+                '((2) ((3 4)) 5 6))
+  (check-equal? (traversal->list rose-traversal-if '((1) ((2 3)) 4 5)) '(1 2 3 4 5)))
+
+; like `cond` for `traversal-if`
+(define-syntax traversal-cond
+  (syntax-parser
+    [(_ [(~literal else) body]) #'body]
+    [(_ [pred body]) #'(traversal-if pred body (error 'traversal-cond "all traversal-cond predicates failed"))]
+    [(_ [pred body] clause ...+) #'(traversal-if pred body (traversal-cond clause ...))]))
+
+(module+ test
+  (define rose-lv-traversal
+    (traversal-cond
+      [list? (traversal-compose list-traversal rose-lv-traversal)]
+      [vector? (traversal-compose vector-traversal rose-lv-traversal)]
+      [else identity-traversal]))
+  (check-equal? (traversal-modify rose-lv-traversal #((1) (#(2 3)) 4 5) add1)
+                #((2) (#(3 4)) 5 6)))
 
 #;(-> traversal? target? (listof focus?))
 ; get a list of all foci
