@@ -33,25 +33,25 @@ Use @racket[current-update-target] to use the optics on the target of the update
 ]
 
 This is cumbersome, especially when you want to perform multiple updates in sequence.
-As such, the library provides helpers like @racket[get] and @racket[optic-set!] which thread the parameter
-implicitly. Operations like @racket[optic-set!] have the side effect of mutating the value of the parameter.
+As such, the library provides helpers like @racket[get] and @racket[modify!] which thread the parameter
+implicitly. Operations like @racket[modify!] have the side effect of mutating the value of the parameter.
 
 @examples[
 #:eval op-eval
-(update (list 1 2 3) [(list a b c) (optic-set! a #t) (modify! b -)])
+(update (list 1 2 3) [(list a b c) (set! a #t) (modify! b -)])
 (struct posn [x y] #:transparent)
-(update (posn 1 2) [(struct-field posn x x-value) (optic-set! x-value 3)])
+(update (posn 1 2) [(struct-field posn x x-value) (set! x-value 3)])
 (update (list (posn 1 2) (posn 3 4))
   [(list (struct-field posn x x-value) p)
    (modify! x-value -)
-   (optic-set! p (posn 5 6))])
+   (set! p (posn 5 6))])
 (update (list (posn 1 2) (posn 3 4) (posn 5 6))
   [(list-of (struct-field posn x x-value)) (modify! x-value -)])
 (update (list 1 2 3)
   [(list a b) (error "boom")]
-  [(list a b c) (optic-set! c 4)])
+  [(list a b c) (set! c 4)])
 (update (list 1 2) [(list a b) (get a)])
-(update (list 1 2) [(list a b) (optic-set! a (+ 4 (get b)))])
+(update (list 1 2) [(list a b) (set! a (+ 4 (get b)))])
 ]
 
 @section{Patterns}
@@ -103,7 +103,7 @@ Match all the patterns.
 
 @examples[
     #:eval op-eval
-    (update (list 1 2) [(and a (list b c)) (optic-set! b (get a))])
+    (update (list 1 2) [(and a (list b c)) (set! b (get a))])
 ]
 }
 
@@ -115,8 +115,8 @@ Matches pairs. @racket[car-pat] gets matched on the @racket[car] (composes the @
 
 @examples[
     #:eval op-eval
-    (update (cons 1 2) [(cons a b) (optic-set! a 3)])
-    (update (list #t #f) [(cons a (cons b _)) (optic-set! b 'true)])
+    (update (cons 1 2) [(cons a b) (set! a 3)])
+    (update (list #t #f) [(cons a (cons b _)) (set! b 'true)])
 ]
 }
 
@@ -155,16 +155,16 @@ Cannot be used on fields from a struct's super type.
 
 @examples[
 #:eval op-eval
-(update (posn 1 2) [(struct-field posn x x-value) (optic-set! x-value 3)])
-(update (posn 1 2) [(struct-field posn x) (optic-set! x 3)])
+(update (posn 1 2) [(struct-field posn x x-value) (set! x-value 3)])
+(update (posn 1 2) [(struct-field posn x) (set! x 3)])
 ]
 
 @examples[
 #:eval op-eval
 #:label "Be careful with struct subtypes:"
 (struct posn3 posn [z] #:transparent)
-(update (posn3 3 4 5) [(struct-field posn3 z) (optic-set! z 9)])
-(update (posn3 3 4 5) [(struct-field posn x) (optic-set! x 9)])
+(update (posn3 3 4 5) [(struct-field posn3 z) (set! z 9)])
+(update (posn3 3 4 5) [(struct-field posn x) (set! x 9)])
 ]
 
 Naively trying to use a super type's struct field to perform an update on an instance of the subtype will yield an instance of the super type.
@@ -217,9 +217,12 @@ this way.
 @defproc[(optic-set! [optic lens?] [value any/c]) any/c]{
   Sets the focus of @racket[optic] to @racket[value] using @racket[current-update-target]. Also mutates @racket[current-update-target] and returns its new value.
 
+  Using @racket[set!] on a variable bound by @racket[update] will use @racket[optic-set!], so you can just use @racket[set!] instead.
+
   @examples[
     #:eval op-eval
     (update (cons 1 2) [(cons a _) (optic-set! a #t)])
+    (update (cons 1 2) [(cons a _) (set! a #t)])
     (current-update-target (cons 1 2))
     (optic-set! car-lens -1)
     (current-update-target)
@@ -250,12 +253,13 @@ this way.
 }
 
 @defparam[current-update-target target any/c]{
-  A parameter that defines the current target of an @racket[update] expression.
+  A parameter that is equal to the current target of an @racket[update] expression.
+  Used in functions like @racket[get] and @racket[modify!].
 
   @examples[
     #:eval op-eval
     (update (list 1 2) [(list a b) (current-update-target)])
-    (update (list 1 2) [(list a b) (optic-set! a 4) (current-update-target)])
+    (update (list 1 2) [(list a b) (set! a 4) (current-update-target)])
   ]
 }
 
@@ -279,6 +283,6 @@ this way.
       (syntax-rules ()
         [(posn x-pat y-pat)
          (and (struct-field posn x x-pat) (struct-field posn y y-pat))]))
-    (update (posn 1 2) [(posn a b) (optic-set! a 4) (modify! b -)])
+    (update (posn 1 2) [(posn a b) (set! a 4) (modify! b -)])
   ]
 }
