@@ -67,7 +67,7 @@
          "../optics/isomorphism.rkt"
          "../optics/lens.rkt"
          "../optics/optic.rkt"
-         (for-syntax syntax/parse syntax/parse/class/struct-id))
+         (for-syntax syntax/parse syntax/transformer syntax/parse/class/struct-id))
 
 
 
@@ -211,17 +211,12 @@
          [(#%? predicate)
           #'body])]))
 
-  (define (make-optic-set!-transformer current-optic-arg)
-    (define/syntax-parse current-optic current-optic-arg)
-    (make-set!-transformer
-     (syntax-parser
-       ; weird things will happen with macro intro scope for current-optic
-       ; you'll end up with extra intro scopes on current-optic, but that should be fine.
-       ; actually maybe not.
-       [(set! id:id val) #'(optic-set! current-optic val)]
-       [id:id #'current-optic])))
+  (define (make-optic-set!-transformer current-optic-stx)
+    (define/syntax-parse current-optic current-optic-stx)
+    (make-variable-like-transformer #'current-optic
+                                    #'(λ (val) (optic-set! current-optic val))))
 
-  (define (compile-host-expr e) (resume-host-expansion e #:reference-compilers ([var compile-reference]))))
+  (define (compile-host-expr e) (resume-host-expansion e #:reference-compilers ([var mutable-reference-compiler]))))
 
 ; the scrutinee of the current update form. Does not change as the update dives into the structure.
 (define current-update-target (make-parameter #f #f 'current-update-target-not-initialized))
