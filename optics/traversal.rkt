@@ -192,18 +192,11 @@
 ; chooses a traversal based on `(pred target)`.
 ; predicate must not depend on foci. To be more precise, no modification
 ; may cause the truthiness of `(pred target)` to change.
-; `then-traversal` and `else-traversal` get evaluated each usage of the optic. This is necessary
-; to support recursively defined optics.
+; then-traversal and else-traversal are wrapped in lazy-traversal.
 (define-syntax-rule
   (traversal-if pred then-traversal else-traversal)
   (let ([pred-v pred])
-    (traversal-if/proc pred-v (λ () then-traversal) (λ () else-traversal))))
-
-(define (traversal-if/proc pred then-traversal-thnk else-traversal-thnk)
-  (make-traversal (λ (proc target)
-                    (traversal-modify (if (pred target) (then-traversal-thnk) (else-traversal-thnk)) target proc))
-                  (λ (proc init target)
-                    (traversal-foldl (if (pred target) (then-traversal-thnk) (else-traversal-thnk)) target proc init))))
+    (traversal-if/strict pred (lazy-traversal then-traversal) (lazy-traversal else-traversal))))
 
 (module+ test
   (define vector-or-list-traversal (traversal-if list? list-traversal vector-traversal))
@@ -217,7 +210,18 @@
                 '((2) ((3 4)) 5 6))
   (check-equal? (traversal->list rose-traversal-if '((1) ((2 3)) 4 5)) '(1 2 3 4 5)))
 
+(define (traversal-if/strict pred then-traversal else-traversal)
+  (dependent-traversal (λ (target) (if (pred target) then-traversal else-traversal))))
+
+(module+ test
+  (let ([vector-or-list-traversal (traversal-if/strict list? list-traversal vector-traversal)])
+    (check-equal? (traversal->list vector-or-list-traversal '(1 2 3)) '(1 2 3))
+    (check-equal? (traversal->list vector-or-list-traversal #(1 2 3)) '(1 2 3))
+    (check-equal? (traversal-modify vector-or-list-traversal '(1 2 3) add1) '(2 3 4))
+    (check-equal? (traversal-modify vector-or-list-traversal #(1 2 3) add1) #(2 3 4))))
+
 ; like `cond` for `traversal-if`
+; bodies are wrapped in lazy-traversal unless the only clause is an else clause.
 (define-syntax traversal-cond
   (syntax-parser
     [(_ [(~literal else) body]) #'body]
@@ -231,7 +235,37 @@
       [vector? (traversal-compose vector-traversal rose-lv-traversal)]
       [else identity-traversal]))
   (check-equal? (traversal-modify rose-lv-traversal #((1) (#(2 3)) 4 5) add1)
-                #((2) (#(3 4)) 5 6)))
+                #((2) (#(3 4)) 5 6))
+  (check-exn #rx"traversal-cond" (λ () (traversal-modify (traversal-cond [(const #f) identity-traversal]) 1 add1))))
+
+; A lazy traversal that isn't evaluated until it is used. It is evaluated at most once.
+; Useful for creating recursive traversals.
+(define-syntax-rule (lazy-traversal body ...) (promise-traversal/proc (lazy body ...)))
+
+(define (promise-traversal/proc traversal-promise)
+  (dependent-traversal (λ (target) (force traversal-promise))))
+
+(module+ test
+  (struct tree [value children] #:transparent)
+  (define tree1 (tree 1 (list (tree 2 (list (tree 3 '())))
+                              (tree 4 '()))))
+  ; these aren't actually lenses, but that's just bc this module shouldn't depend on lens
+  (define tree-value-lens (make-traversal (λ (proc tree) (proc (tree-value tree)))
+                                          (λ (proc init tree) (proc (tree-value tree) init))))
+  (define tree-children-lens (make-traversal (λ (proc tree) (proc (tree-children tree)))
+                                             (λ (proc init tree) (proc (tree-children tree) init))))
+  (define tree-values-traversal (lazy-traversal (traversal-append tree-value-lens (traversal-compose tree-children-lens list-traversal tree-values-traversal))))
+  (check-equal? (traversal-foldl tree-values-traversal tree1 + 0) 10))
+
+; A traversal that depends on its target. Useful for creating a conditional traversal. See `if-traversal`.
+(define (dependent-traversal target->traversal)
+  (make-traversal (λ (proc target) (traversal-modify (target->traversal target) target proc))
+                  (λ (proc init target) (traversal-foldl (target->traversal target) target proc init))))
+
+(module+ test
+  (let ([trv (dependent-traversal (λ (target) (if (vector? target) vector-traversal list-traversal)))])
+    (check-equal? (traversal-modify trv #(1 2 3) add1) #(2 3 4))
+    (check-equal? (traversal-modify trv '(1 2 3) add1) '(2 3 4))))
 
 #;(-> traversal? target? (listof focus?))
 ; get a list of all foci
