@@ -11,6 +11,10 @@ This page serves as a guide for those who aren't familiar with @tech{optic}s.
 Optics are useful for performing accesses and immutable updates deeply within a structure. They are very powerful,
 but they are also very abstract and have a bit of a learning curve.
 
+The big idea is that optics allow you to separate the "where" from the "what" when you are operating on parts of a
+structure. An optic describes "where", and something like a procedure may describe "what" you want to do.
+Additionally, optics provide a rich language of specifying "where", and are re-usable.
+
 @section{Lenses}
 
 The most intuitive type of optic is a lens. A lens is a first class getter and setter for a focus within a target.
@@ -59,6 +63,7 @@ You can create your own lenses with @racket[make-lens].
 
 You can also compose lenses to focus on values deep within a target.
 
+@elemtag["rect-example"]{ }
 @examples[
   #:eval op-eval
   (struct rect [top-left width height] #:transparent)
@@ -147,7 +152,7 @@ You can create recursive traversals that refer to themselves.
 
 An isomorphism is a lens where the @tech{focus} is "equivalent" to the @tech{target}.
 It is used when two types or representations of data can be converted back and forth between each other.
-Isomorphisms are useful for treating data from one representation as another.
+Isomorphisms are useful for treating data from one representation as another, like an adapter.
 
 @examples[
   #:eval op-eval
@@ -163,7 +168,7 @@ represent this as a pair of functions which are inverses of each other.
 
 @examples[
   #:eval op-eval
-  (define my-symbol<->string (make-isomorphism symbol->string string->symbol))
+  (define my-symbol<->string (make-iso symbol->string string->symbol))
   my-symbol<->string
 ]
 
@@ -181,7 +186,116 @@ This is because the new focus completely determines the new target. As such, the
 @racket[iso-forward] and @racket[iso-backward], which correspond to @racket[lens-get] and @racket[lens-set] respectively.
 
 @examples[
-  #:op-eval op-eval
+  #:eval op-eval
   (iso-forward symbol<->string 'chocolate)
   (iso-backward symbol<->string "oreo")
 ]
+
+Like traversals, isomorphisms become very useful when combined with other optics. For example, let's consider
+the following data structure representing a rectangular bounding box:
+
+@examples[
+  #:eval op-eval
+  #:label #f
+  (struct bounds [top-left bottom-right] #:transparent)
+]
+
+A @racket[bounds] represents a rectangular area of space. Recall the @elemref["rect-example"]{rectangle example} above.
+These two data types are isomorphic:
+
+@examples[
+  #:eval op-eval
+  #:label #f
+  (define bounds<->rect
+    (make-iso
+     (lambda (b)
+       (match b
+         [(bounds (and top-left (posn x0 y0)) (posn x1 y1))
+          (rect top-left (- x1 x0) (- y1 y0))]))
+     (lambda (r)
+       (match r
+         [(rect (and top-left (posn x y)) width height)
+          (bounds top-left (posn (+ x width) (+ y height)))]))))
+  rect1
+  (iso-backward bounds<->rect rect1)
+  (iso-forward bounds<->rect (iso-backward bounds<->rect rect1))
+]
+
+We can use this isomorphism to treat a @racket[bounds] as a @racket[rect] and vice versa.
+
+@examples[
+  #:eval op-eval
+  #:label #f
+  (define rect-width-lens (struct-lens rect width))
+  (define bound-width-lens (lens-compose bounds<->rect rect-width-lens))
+  (define (widen-bounds bnd dw)
+    (lens-modify bound-width-lens
+                 bnd
+                 (lambda (w) (+ w dw))))
+  (widen-bounds (bounds (posn 10 10) (posn 20 20)) 5)
+]
+
+Here, we take advantage of the fact that all isomorphisms are lenses and compose our isomorphism with
+the @racket[rect-width-lens]. This creates an optic that focuses on the width of a @racket[bounds], even
+though a @racket[bounds] doesn't actually have a width field! Using this, we can treat a @racket[bounds]
+as if it has a width and modify its width.
+
+@examples[
+  #:eval op-eval
+  #:label #f
+  (define/match (is-in-bounds? bnd pos)
+    [((bounds (posn x0 y0) (posn x1 y1)) (posn x y))
+     (and (<= x0 x x1) (<= y0 y y1))])
+  (is-in-bounds? (bounds (posn 10 10) (posn 20 20)) (posn 15 15))
+  (define (is-in-rect? rct pos)
+    (is-in-bounds? (iso-backward bounds<->rect rct) pos))
+  (is-in-rect? (rect (posn 10 10) 5 5) (posn 11 11))
+]
+
+Here, we have a predicate defined for a @racket[bounds], which is a representation that is suitable for bounds checking.
+If we want to create the same predicate for rectangles, we can use our isomorphism to treat a @racket[rect] as a @racket[bounds].
+
+@examples[
+  #:eval op-eval
+  #:label #f
+  (define rect-bottom-right-lens (lens-compose (iso-reverse bounds<->rect) (struct-lens bounds bottom-right)))
+  (lens-set rect-bottom-right-lens rect1 (posn 30 30))
+]
+
+Here, we create a lens that focuses on the bottom right position of a @racket[rect] even though it doesn't have one as a field.
+The way we defined our isomorphism is useful for treating a @racket[bounds] as a @racket[rect], but here, we want to to the reverse.
+Luckily, since isomorphisms are bi-directional, we can use @racket[iso-reverse] to treat a @racket[rect] as a @racket[bounds] in an
+optic composition.
+
+An isomorphism is like an adapter. If you have two equivalent representations, and need to perform operations on one that are easier on
+the other, isomorphisms help you avoid explicitly converting back and forth. And when combined with optic composition, isomorphisms can
+allow you to abstract these operations further.
+
+
+Now let's put it all together. Let's create a function that increments the height of all @racket[bounds]s in a list of @racket[bounds]:
+
+@examples[
+  #:eval op-eval
+  #:label #f
+  (define (increment-bounds-heights lob)
+    (traversal-modify
+     (traversal-compose list-traversal bounds<->rect (struct-lens rect height))
+     lob
+     add1))
+  (increment-bounds-heights (list (bounds (posn 0 0) (posn 10 10)) (bounds (posn 5 5) (posn 15 20))))
+]
+
+We use @racket[list-traversal] for its mapping behavior, we treat all the elements as @racket[rect]s, and we focus on their heights.
+Then we just apply @racket[add1] to them.
+
+@section{Conclusion}
+
+Optics allow you to separate the "where" from the "what". You can create combinations of optics to specify exactly where
+you want a modification or access, and then separately, you can specify what you want to do by providing a procedure like @racket[add1].
+
+Traversals are useful for focusing on multiple parts of a structure, isomorphisms are useful for conversions/adapters between
+equivalent representations of data, and lenses are useful for focusing on one particular part of a structure.
+
+@;TODO mention traversal-append and conditional optics
+There are other types of optics, like @tech{prism}s, and other ways of combining optics, like @racket[optic-compose] and @racket[update].
+Read @seclink["reference"]{the reference} to find out more.

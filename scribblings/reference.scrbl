@@ -2,7 +2,7 @@
 
 @require[@for-label[ocular-patdown/update]]
 
-@title[#:style 'toc]{Optics Reference}
+@title[#:style 'toc #:tag "reference"]{Optics Reference}
 
 @defmodule[ocular-patdown]
 
