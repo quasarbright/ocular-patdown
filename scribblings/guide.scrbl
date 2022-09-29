@@ -128,35 +128,60 @@ When we compose a traversal with a lens, we get a traversal. Since lenses are tr
 they work just fine with traversal composition. This, along with adding other optics into the mix, can be used to express a wide
 variety of computations. Composing simple optics in this way allows you to focus on pretty much any values you'd want to in a target.
 
-If you're writing an interpreter, you can create a traversal that focuses on the free variables of an expression. Then, you can use that
-traversal to perform operations like substitution, renaming, getting a set of free variables, etc.
+You can create recursive traversals that refer to themselves.
 
 @examples[
   #:eval op-eval
-(define free-var-traversal
+(define tree-children-traversal (optic-compose tree-children-lens list-traversal))
+(define tree-values-traversal
   (make-traversal
-   (lambda (proc expr)
-     (let loop ([expr expr] [bound (set)])
-       (match expr
-         [(? symbol? x) (if (set-member? bound x) x (proc x))]
-         [`(lambda (,(? symbol? x)) ,body) `(lambda (,x) ,(loop body (set-add bound x)))]
-         [(list rator rand) (list (loop rator bound) (loop rand bound))])))
-   (lambda (proc init expr)
-     (let loop ([expr expr] [bound (set)] [acc init])
-       (match expr
-         [(? symbol? x) (if (set-member? bound x) acc (proc acc x))]
-         [`(lambda (,(? symbol? x)) ,body) (loop body (set-add bound x) acc)]
-         [(list rator rand) (loop rand bound (loop rator bound acc))])))))
-(define (free-vars-set expr) (traversal-foldl free-var-traversal expr set-add (set)))
-(free-vars-set '(f (lambda (x) (g x))))
-(define (subst expr var replacement) (traversal-modify free-var-traversal expr (lambda (x) (if (eq? var x) replacement x))))
-(define (evaluate expr)
-  (match expr
-    [(? symbol? x) (error 'eval "unbound var ~a" x)]
-    [`(lambda (,(? symbol? x)) ,body) expr]
-    [(list rator rand)
-     (match (evaluate rator)
-       [`(lambda (,(? symbol? x)) ,body) (evaluate (subst body x (evaluate rand)))]
-         [expr (error 'eval "cannot apply non-function ~a" expr)])]))
-(evaluate '(((lambda (x) (lambda (y) x)) (lambda (a) a)) (lambda (b) b)))
+   (λ (proc tree) (traversal-modify (traversal-compose tree-children-traversal tree-values-traversal) (lens-modify tree-value-lens tree proc) proc))
+   (λ (proc init tree) (traversal-foldl (traversal-compose tree-children-traversal tree-values-traversal) tree proc (proc (lens-get tree-value-lens tree) init)))))
+(traversal-modify tree-values-traversal tree1 number->string)
+(traversal-foldl tree-values-traversal tree1 cons '())
+]
+
+@;TODO once you have a better way to write recursive optics, put an example here
+
+@section{Isomorphisms}
+
+An isomorphism is a lens where the @tech{focus} is "equivalent" to the @tech{target}.
+It is used when two types or representations of data can be converted back and forth between each other.
+Isomorphisms are useful for treating data from one representation as another.
+
+@examples[
+  #:eval op-eval
+  (iso-modify symbol<->string 'foo string-upcase)
+]
+
+Here, we are using the isomorphism between symbols and strings to treat a symbol as a string. We are using a
+string-to-string function, but we are inputting and outputting a symbol. The isomorphism, @racket[symbol<->string] just
+automates this back-and-forth conversion.
+
+In math, an isomorphism is a one-to-one mapping between two sets. In code, we
+represent this as a pair of functions which are inverses of each other.
+
+@examples[
+  #:eval op-eval
+  (define my-symbol<->string (make-isomorphism symbol->string string->symbol))
+  my-symbol<->string
+]
+
+All isomorphisms are lenses (and thus, are traversals too), but not all lenses are isomorphisms.
+
+@examples[
+  #:eval op-eval
+  (lens? symbol<->string)
+  (lens-get symbol<->string 'chocolate)
+  (lens-set symbol<->string 'cookies-and-cream "oreo")
+]
+
+Think about that usage of @racket[lens-set]. For an isomorphism, there is no need to supply the target!
+This is because the new focus completely determines the new target. As such, the library provides
+@racket[iso-forward] and @racket[iso-backward], which correspond to @racket[lens-get] and @racket[lens-set] respectively.
+
+@examples[
+  #:op-eval op-eval
+  (iso-forward symbol<->string 'chocolate)
+  (iso-backward symbol<->string "oreo")
 ]
