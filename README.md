@@ -1,3 +1,3 @@
 ocular-patdown
 ================
-Like pattern matching, but for deep immutable updates via optics like lenses, traversals, etc. Also provides an optics library.
+An optics library for Racket, including a `match`-like language for pattern-based updates and optic creation
