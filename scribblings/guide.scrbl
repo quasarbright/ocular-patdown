@@ -13,7 +13,7 @@ but they are also very abstract and have a bit of a learning curve.
 
 The big idea is that optics allow you to separate the "where" from the "what" when you are operating on parts of a
 structure. An optic describes "where", and something like a procedure may describe "what" you want to do.
-Additionally, optics provide a rich language of specifying "where", and are re-usable.
+Additionally, optics provide a rich language for specifying "where", and are re-usable.
 
 @section{Lenses (Guide)}
 
@@ -82,13 +82,13 @@ You can also compose lenses to focus on values deep within a target.
   (lens-set tree-first-value-lens tree1 20)
 ]
 
-When we compose lenses, the focus of the first is used as the target of the second. Using lens composition, we can perform very deep accesses
+When we compose lenses, the focus of the first lens is used as the target of the second. Using lens composition, we can perform very deep accesses
 and modifications.
 
 @section{Traversals (Guide)}
 
 Traversals are like lenses, except they can have zero or multiple @tech[#:key "focus"]{foci}. Traversals are useful for focusing on all the elements
-of a collection. A traversal is like a first class @racket[map] and a @racket[foldl]{fold}.
+of a collection. A traversal is like a first class @racket[map] and @racket[foldl].
 
 @examples[
   #:eval op-eval
@@ -109,7 +109,7 @@ one target.
 ]
 
 Like lenses, traversals can be composed. Each focus of the first traversal becomes the target for the second traversal.
-All the inner foci of all the outer targets are foci of the composition.
+The composition focuses on all the inner foci of all the outer foci.
 
 @examples[
   #:eval op-eval
@@ -130,10 +130,10 @@ Where things really get interesting is when we compose lenses and traversals.
 ]
 
 When we compose a traversal with a lens, we get a traversal. Since lenses are traversals that happen to have a single target,
-they work just fine with traversal composition. This, along with adding other optics into the mix, can be used to express a wide
-variety of computations. Composing simple optics in this way allows you to focus on pretty much any values you'd want to in a target.
+they work just fine with traversal composition. Compositions of simple lenses and traversals are sufficient to specify the "where"
+of most computations. But as we'll see, there are a few more tricks that allow us to express certain, complex "where"s more simply.
 
-You can create recursive traversals that refer to themselves.
+One little trick is that you can create recursive traversals that refer to themselves.
 
 @examples[
   #:eval op-eval
@@ -236,9 +236,11 @@ We can use this isomorphism to treat a @racket[bounds] as a @racket[rect] and vi
 ]
 
 Here, we take advantage of the fact that all isomorphisms are lenses and compose our isomorphism with
-the @racket[rect-width-lens]. This creates an optic that focuses on the width of a @racket[bounds], even
-though a @racket[bounds] doesn't actually have a width field! Using this, we can treat a @racket[bounds]
+the @racket[rect-width-lens]. This creates a lens that focuses on the width of a @racket[bounds], even
+though a @racket[bounds] doesn't actually have a width field! Using this lens, we can treat a @racket[bounds]
 as if it has a width and modify its width.
+
+We can treat a @racket[rect] as a @racket[bounds] by using @racket[iso-backward].
 
 @examples[
   #:eval op-eval
@@ -255,6 +257,8 @@ as if it has a width and modify its width.
 Here, we have a predicate defined for a @racket[bounds], which is a representation that is suitable for bounds checking.
 If we want to create the same predicate for rectangles, we can use our isomorphism to treat a @racket[rect] as a @racket[bounds].
 
+We can also treat a @racket[rect] as a @racket[bounds] by reversing the isomorphism.
+
 @examples[
   #:eval op-eval
   #:label #f
@@ -262,15 +266,15 @@ If we want to create the same predicate for rectangles, we can use our isomorphi
   (lens-set rect-bottom-right-lens rect1 (posn 30 30))
 ]
 
-Here, we create a lens that focuses on the bottom right position of a @racket[rect] even though it doesn't have one as a field.
+Here, we create a lens that focuses on the bottom right position of a @racket[rect] even though it doesn't have a bottom right as a field.
 The way we defined our isomorphism is useful for treating a @racket[bounds] as a @racket[rect], but here, we want to to the reverse.
 Luckily, since isomorphisms are bi-directional, we can use @racket[iso-reverse] to treat a @racket[rect] as a @racket[bounds] in an
 optic composition.
 
 An isomorphism is like an adapter. If you have two equivalent representations, and need to perform operations on one that are easier on
 the other, isomorphisms help you avoid explicitly converting back and forth. And when combined with optic composition, isomorphisms can
-allow you to abstract these operations further.
-
+allow you to abstract these operations further. More importantly, isomorphisms allow you to specify a "where" in one data representation
+in terms of a "where" in some other, equivalent representation.
 
 Now let's put it all together. Let's create a function that increments the height of all @racket[bounds]s in a list of @racket[bounds]:
 
