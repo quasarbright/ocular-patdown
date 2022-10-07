@@ -72,7 +72,10 @@
 (define (rose-map proc rose)
   (if (list? rose)
       (map (λ (child) (rose-map proc child)) rose)
-      (proc rose)))
+      (let ([result (proc rose)])
+        (if (list? result)
+            (error 'rose-traversal "cannot set a rose leaf to a list")
+            result))))
 
 #;(-> (-> any/c any/c any/c) any/c rose? any/c)
 ; foldl over the leaves of the rose tree.
@@ -117,7 +120,10 @@
   (check-equal? (traversal-modify maybe-traversal 1 add1) 2)
   (check-equal? (traversal-modify maybe-traversal #f add1) #f)
   (check-equal? (traversal-foldl maybe-traversal 1 + 0) 1)
-  (check-equal? (traversal-foldl maybe-traversal #f + 0) 0))
+  (check-equal? (traversal-foldl maybe-traversal #f + 0) 0)
+  (test-exn "cannot change number of targets"
+            exn:fail?
+            (traversal-modify rose-traversal '((1 2)) (λ (v) (list v v)))))
 
 
 

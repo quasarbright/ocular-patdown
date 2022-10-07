@@ -109,6 +109,9 @@ All @tech{lens}es are traversals, but not all traversals are lenses.
 
 @defthing[rose-traversal traversal?]{
   Traversal that focuses on each leaf of a rose tree, where a rose tree is either a non-list or a list of rose trees.
+
+  Raises an exception when modification results in a focus turning into a list since this could lead to the number of targets changing.
+
   @examples[
     #:eval op-eval
     (traversal-modify rose-traversal '((1 2) () ((3) 4)) add1)
