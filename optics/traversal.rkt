@@ -123,7 +123,7 @@
   (check-equal? (traversal-foldl maybe-traversal #f + 0) 0)
   (test-exn "cannot change number of targets"
             exn:fail?
-            (traversal-modify rose-traversal '((1 2)) (λ (v) (list v v)))))
+            (thunk (traversal-modify rose-traversal '((1 2)) (λ (v) (list v v))))))
 
 
 
