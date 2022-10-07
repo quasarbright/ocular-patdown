@@ -15,7 +15,7 @@ The big idea is that optics allow you to separate the "where" from the "what" wh
 structure. An optic describes "where", and something like a procedure may describe "what" you want to do.
 Additionally, optics provide a rich language of specifying "where", and are re-usable.
 
-@section{Lenses}
+@section{Lenses (Guide)}
 
 The most intuitive type of optic is a lens. A lens is a first class getter and setter for a focus within a target.
 
@@ -85,7 +85,7 @@ You can also compose lenses to focus on values deep within a target.
 When we compose lenses, the focus of the first is used as the target of the second. Using lens composition, we can perform very deep accesses
 and modifications.
 
-@section{Traversals}
+@section{Traversals (Guide)}
 
 Traversals are like lenses, except they can have zero or multiple @tech[#:key "focus"]{foci}. Traversals are useful for focusing on all the elements
 of a collection. A traversal is like a first class @racket[map] and a @racket[foldl]{fold}.
@@ -148,7 +148,7 @@ You can create recursive traversals that refer to themselves.
 
 @;TODO once you have a better way to write recursive optics, put an example here
 
-@section{Isomorphisms}
+@section{Isomorphisms (Guide)}
 
 An isomorphism is a lens where the @tech{focus} is "equivalent" to the @tech{target}.
 It is used when two types or representations of data can be converted back and forth between each other.
