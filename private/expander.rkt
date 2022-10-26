@@ -135,88 +135,74 @@
 ; on-fail is the expression to evaluate upon failure. not a thunk.
 (define-host-interface/expression (update* target:expr p:pat body:expr on-fail:expr)
   #:binding {(nest-one p (host body))}
-  #`(let ([on-fail-proc (thunk on-fail)]
-          [target-v target])
-      #,(compile-validate-target #'target-v #'p
-                                 (compile-bind-optics #'identity-iso #'p
-                                                      #`(parameterize ([current-update-target target-v])
-                                                          #,(compile-host-expr #'body)))
-                                 #'on-fail-proc)))
+  #'(with-reference-compilers ([var mutable-reference-compiler])
+      (let ([on-fail-proc (thunk on-fail)]
+            [target-v target])
+        (validate-target target-v p
+                         (bind-optics identity-iso p
+                                      (parameterize ([current-update-target target-v])
+                                        body))
+                         on-fail-proc))))
 
 (begin-for-syntax
   (define-literal-set pattern-literals
     #:datum-literals (cons list list-of struct-field iso optic and2 ? _)
     ())
 
-  ; on-fail is an identifier bound to a zero-argument procedure to call upon failure.
-  (define (compile-validate-target target pat body on-fail)
-    (syntax-parse (list target pat body on-fail)
-      [(target:id pat body on-fail:id)
-       (syntax-parse #'pat
-         #:literal-sets (pattern-literals)
-         [var:id #'body]
-         [_ #'body]
-         [(optic target? o pat)
-          #:with target?^ (compile-host-expr #'target?)
-          #:with o^ (compile-host-expr #'o)
-          ; simulate introduction scopes to be safe
-          #:with (new-targets) (generate-temporaries (list #'new-targets))
-          #`(if (target?^ target)
-                (let ([new-targets (traversal->list o^ target)])
-                  #,(compile-validate-targets #'new-targets #'pat #'body #'on-fail))
-                (on-fail))]
-         [(and2 p1 p2)
-          (compile-validate-target #'target #'p1
-                                   (compile-validate-target #'target #'p2 #'body #'on-fail)
-                                   #'on-fail)]
-         [(#%? predicate)
-          #:with predicate^ (compile-host-expr #'predicate)
-          #'(if (predicate^ target)
-                body
-                (on-fail))])]))
-
-  (define (compile-validate-targets targets pat body on-fail)
-    (syntax-parse (list targets pat body on-fail)
-      [(targets:id pat body on-fail:id)
-       ; if you want to avoid using booleans like this, you can use call/cc
-       ; see schema scheme's bindingspec compiler for listof
-       #`(let ([return-false (const #f)])
-           (if (and (sequence? targets)
-                    (for/and ([target targets])
-                      #,(compile-validate-target #'target #'pat #'#t #'return-false)))
-               body
-               (on-fail)))]))
-
-  (define (compile-bind-optics current-optic p body)
-    (syntax-parse p
-      [p
-       #:with body body
-       #:with current-optic current-optic
-       (syntax-parse #'p
-         #:literal-sets (pattern-literals)
-         [var:id
-          #:with var^ (compile-binder! #'var)
-          #'(let-syntax ([var^ (make-optic-set!-transformer #'current-optic)])
-               body)]
-         [_
-          #'body]
-         [(optic target? o p)
-          #:with o^ (compile-host-expr #'o)
-          ; simulate introduction scopes to be safe
-          #:with (new-optic) (generate-temporaries (list #'new-optic))
-          #`(let ([new-optic (optic-compose current-optic o^)])
-              #,(compile-bind-optics #'new-optic #'p #'body))]
-         [(and2 p1 p2)
-          (compile-bind-optics #'current-optic #'p1 (compile-bind-optics #'current-optic #'p2 #'body))]
-         [(#%? predicate)
-          #'body])]))
-
   (define (make-optic-set!-transformer current-optic-stx)
     (define/syntax-parse current-optic current-optic-stx)
     (make-variable-like-transformer #'current-optic
-                                    #'(λ (val) (optic-set! current-optic val))))
+                                    #'(λ (val) (optic-set! current-optic val)))))
 
-  (define (compile-host-expr e) (resume-host-expansion e #:reference-compilers ([var mutable-reference-compiler]))))
+(define-syntax validate-target
+  (syntax-parser
+    [(_ target:id pat body on-fail:id)
+     (syntax-parse #'pat
+       #:literal-sets (pattern-literals)
+       [var:id #'body]
+       [_ #'body]
+       [(optic target? o pat)
+        #`(if (target? target)
+              (let ([new-targets (traversal->list o target)])
+                (validate-targets new-targets pat body on-fail))
+              (on-fail))]
+       [(and2 p1 p2)
+        #'(validate-target target p1
+                           (validate-target target p2 body on-fail)
+                           on-fail)]
+       [(#%? predicate)
+        #'(if (predicate target)
+              body
+              (on-fail))])]))
+
+(define-syntax validate-targets
+  (syntax-parser
+    [(_ targets:id pat body on-fail:id)
+     #'(let ([return-false (const #f)])
+           (if (and (sequence? targets)
+                    (for/and ([target targets])
+                      (validate-target target pat #t return-false)))
+               body
+               (on-fail)))]))
+
+(define-syntax bind-optics
+  (syntax-parser
+    [(_ current-optic:id p body)
+     (syntax-parse #'p
+       #:literal-sets (pattern-literals)
+       [var:id
+        #:with var^ (compile-binder! #'var)
+        #'(let-syntax ([var^ (make-optic-set!-transformer #'current-optic)])
+            body)]
+       [_
+        #'body]
+       [(optic target? o p)
+        #'(let ([new-optic (optic-compose current-optic o)])
+            (bind-optics new-optic p body))]
+       [(and2 p1 p2)
+        #'(bind-optics current-optic p1 (bind-optics current-optic p2 body))]
+       [(#%? predicate)
+        #'body])]))
 
 ; the scrutinee of the current update form. Does not change as the update dives into the structure.
 (define current-update-target (make-parameter #f #f 'current-update-target-not-initialized))
