@@ -41,6 +41,9 @@ this lens to get a @racket[posn]'s @racket[x] value or to make a copy of a @rack
 
 Using @racket[lens-set] does not mutate the target, it returns a modified copy of the target.
 
+In a language like Java, JavaScript, or Python, we'd write @code{myposn.x} to access the field and we'd write
+@code{myposn.x = 10} to set the field (using mutation, unlike lenses). In a sense, @racket[posn-x-lens] is the @code{.x} itself.
+
 Here are other examples of lenses:
 
 @; TODO more examples once there are more library lenses
@@ -55,9 +58,14 @@ These lenses focus on the @racket[car] and @racket[cdr] of a pair, respectively.
 
 You can create your own lenses with @racket[make-lens].
 
-@examples[
+@#reader scribble/comment-reader
+[examples
   #:eval op-eval
-  (define my-car-lens (make-lens car (lambda (pair new-car) (cons new-car (cdr pair)))))
+  (define my-car-lens
+    (make-lens car ; getter
+               (lambda (pair new-car) ; setter
+                 (match pair [(cons old-car old-cdr)
+                              (cons new-car old-cdr)]))))
   (lens-set my-car-lens (cons 1 2) #t)
 ]
 
@@ -72,9 +80,19 @@ You can also compose lenses to focus on values deep within a target.
   (define rect-x-lens (lens-compose rect-top-left-lens posn-x-lens))
   (lens-get rect-x-lens rect1)
   (lens-set rect-x-lens rect1 35)
+]
 
+@racket[rect-top-left-lens] targets a @racket[rect] and focuses on its top-left @racket[posn].
+@racket[posn-x-lens] targets a @racket[posn] and focuses on its x-coordinate. Since @racket[rect-top-left-lens]
+focuses on the same type of value as the target of @racket[posn-x-lens], we can compose them to create
+@racket[rect-x-lens], which targets a @racket[rect] and focuses on the x-coordinate of its top-left @racket[posn].
+
+@examples[
+  #:eval op-eval
+  #:label #f
   (struct tree [val children] #:transparent)
-  (define tree1 (tree 1 (list (tree 2 (list (tree 3 '()))) (tree 4 '()))))
+  (define tree1 (tree 1 (list (tree 2 (list (tree 3 '())))
+                              (tree 4 '()))))
   (define tree-children-lens (struct-lens tree children))
   (define tree-value-lens (struct-lens tree val))
   (define tree-first-value-lens (lens-compose tree-children-lens car-lens tree-value-lens))
@@ -82,8 +100,15 @@ You can also compose lenses to focus on values deep within a target.
   (lens-set tree-first-value-lens tree1 20)
 ]
 
+@racket[tree-children-lens] targets a @racket[tree] and focuses on its list of @racket[children].
+@racket[car-lens] targets a pair (or a list) and focuses on its @racket[car] (its @racket[first] element), which is a @racket[tree].
+@racket[tree-value-lens] targets a @racket[tree] and focuses on its @racket[val]. Similar to above, we can compose these three lenses to get
+@racket[tree-first-value-lens] which targets a @racket[tree] and focuses on the @racket[val] of its first immediate child.
+
 When we compose lenses, the focus of the first lens is used as the target of the second. Using lens composition, we can perform very deep accesses
 and modifications.
+
+Where @racket[posn-x-lens] is like @code{.x} for a @racket[posn], @racket[rect-top-left-lens] is like @code{.top_left.x}.
 
 @section{Traversals (Guide)}
 
@@ -99,7 +124,7 @@ of a collection. A traversal is like a first class @racket[map] and @racket[fold
 ]
 
 All lenses are traversals, but not all traversals are lenses. Lenses are just traversals that happen to have exactly
-one target.
+one focus.
 
 @examples[
   #:eval op-eval
@@ -109,15 +134,21 @@ one target.
 ]
 
 Like lenses, traversals can be composed. Each focus of the first traversal becomes the target for the second traversal.
-The composition focuses on all the inner foci of all the outer foci.
+The composition focuses on all the inner foci of all the outer foci. Don't think about that too much though, just look at an
+example and it'll make more sense.
 
 @examples[
   #:eval op-eval
-  (define lol-traversal (traversal-compose list-traversal list-traversal))
-  (traversal-modify lol-traversal '((1 2 3) (4) ()) add1)
+  (define lov-traversal (traversal-compose list-traversal vector-traversal))
+  (traversal-modify lov-traversal '(#(1 2 3) #(4) #()) add1)
+  (traversal->list lov-traversal '(#(1 2 3) #(4) #()))
 ]
 
-Where things really get interesting is when we compose lenses and traversals.
+Here, we have composed @racket[list-traversal] and @racket[vector-traversal]. This traversal targets a list of vectors
+and focuses on each element of each vector. @racket[traversal->list] collects all the foci into a list, so it's useful for
+seeing what an optic focuses on.
+
+Where things really get interesting is when we compose traversals with lenses. This works because lenses are traversals.
 
 @examples[
   #:eval op-eval
@@ -126,14 +157,26 @@ Where things really get interesting is when we compose lenses and traversals.
   (traversal-modify lop-x-traversal (list (posn 10 20) (posn 30 40)) sqr)
   (define tree-child-value-traversal (traversal-compose tree-children-lens list-traversal tree-value-lens))
   (traversal? tree-child-value-traversal)
+  tree1
   (traversal-modify tree-child-value-traversal tree1 number->string)
 ]
 
-When we compose a traversal with a lens, we get a traversal. Since lenses are traversals that happen to have a single target,
+@racket[lop-x-traversal] targets a list of @racket[posn]s and focuses on each @racket[posn]s' x-value.
+
+@racket[tree-child-value-traversal] targets a @racket[tree] and focuses on each immediate child's value.
+It does not focus on "grandchildren".
+
+In the context of composing optics, traversals are good for "mapping" an optic over a collection. In the above example,
+@racket[tree-children-lens] targets a @racket[tree] and focuses on the list of immediate children in a tree. It focuses on the list itself, not its elements. That is a subtle but important
+distinction. To focus on each child, we compose it with @racket[list-traversal]. We also add @racket[tree-value-lens]
+to the composition to focus on each child's value. In a sense, @racket[tree-value-lens] gets "mapped" over the list that @racket[tree-children-lens]
+focuses on.
+
+When we compose a traversal with a lens, we get a traversal. Since lenses are traversals that happen to have a single focus,
 they work just fine with traversal composition. Compositions of simple lenses and traversals are sufficient to specify the "where"
 of most computations. But as we'll see, there are a few more tricks that allow us to express certain, complex "where"s more simply.
 
-One little trick is that you can create recursive traversals that refer to themselves.
+@;{One little trick is that you can create recursive traversals that refer to themselves.
 
 @examples[
   #:eval op-eval
@@ -145,6 +188,7 @@ One little trick is that you can create recursive traversals that refer to thems
 (traversal-modify tree-values-traversal tree1 number->string)
 (traversal-foldl tree-values-traversal tree1 cons '())
 ]
+}
 
 @;TODO once you have a better way to write recursive optics, put an example here
 
@@ -181,8 +225,9 @@ All isomorphisms are lenses (and thus, are traversals too), but not all lenses a
   (lens-set symbol<->string 'cookies-and-cream "oreo")
 ]
 
-Think about that usage of @racket[lens-set]. For an isomorphism, there is no need to supply the target!
-This is because the new focus completely determines the new target. As such, the library provides
+Think about that usage of @racket[lens-set]. The @racket['cookies-and-cream] was ignored completely.
+In fact, for an isomorphism, there is no need to supply the target!
+This is because the new focus completely determines the value of the new target. As such, the library provides
 @racket[iso-forward] and @racket[iso-backward], which correspond to @racket[lens-get] and @racket[lens-set] respectively.
 
 @examples[
@@ -240,6 +285,7 @@ the @racket[rect-width-lens]. This creates a lens that focuses on the width of a
 though a @racket[bounds] doesn't actually have a width field! Using this lens, we can treat a @racket[bounds]
 as if it has a width and modify its width.
 
+@;{ This is awkward and doens't really show the value of isomorphisms.
 We can treat a @racket[rect] as a @racket[bounds] by using @racket[iso-backward].
 
 @examples[
@@ -256,6 +302,7 @@ We can treat a @racket[rect] as a @racket[bounds] by using @racket[iso-backward]
 
 Here, we have a predicate defined for a @racket[bounds], which is a representation that is suitable for bounds checking.
 If we want to create the same predicate for rectangles, we can use our isomorphism to treat a @racket[rect] as a @racket[bounds].
+}
 
 We can also treat a @racket[rect] as a @racket[bounds] by reversing the isomorphism.
 
@@ -295,7 +342,7 @@ Then we just apply @racket[add1] to them.
 @section{Conclusion}
 
 Optics allow you to separate the "where" from the "what". You can create combinations of optics to specify exactly where
-you want a modification or access, and then separately, you can specify what you want to do by providing a procedure like @racket[add1].
+you want a modification or access, and then separately, you can specify what you want to do by providing a procedure.
 
 Traversals are useful for focusing on multiple parts of a structure, isomorphisms are useful for conversions/adapters between
 equivalent representations of data, and lenses are useful for focusing on one particular part of a structure.
