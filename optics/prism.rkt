@@ -55,7 +55,7 @@ to create the target from the focus alone.
      ((make-prism-inject prism) focus))]
 
   #:methods gen:traversal
-  [(define (traversal-modify prism target proc)
+  [(define (traversal-map prism target proc)
      (prism-match prism target
                   [focus (prism-inject prism (proc focus))]
                   [target]))

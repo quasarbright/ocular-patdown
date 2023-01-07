@@ -215,7 +215,7 @@
   (current-update-target))
 ; apply a function to update the focus of the current target under 'optic'
 (define (modify! optic func)
-  (current-update-target (traversal-modify optic (current-update-target) func))
+  (current-update-target (traversal-map optic (current-update-target) func))
   (current-update-target))
 ; fold over the current target's foci under 'traversal'
 (define (fold traversal proc init) (traversal-foldl traversal (current-update-target) proc init))

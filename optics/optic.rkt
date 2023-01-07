@@ -31,7 +31,7 @@
   (check-pred iso? (iso-compose symbol<->string))
   (check-pred (conjoin (negate iso?) lens?) (optic-compose cdr-lens car-lens))
   (check-equal? (lens-get (optic-compose cdr-lens car-lens) '(1 2)) 2)
-  (check-equal? (traversal-modify (optic-compose list-traversal symbol<->string)
+  (check-equal? (traversal-map (optic-compose list-traversal symbol<->string)
                                   '(foo bar)
                                   string-upcase)
                 '(FOO BAR))
@@ -41,7 +41,7 @@
 
 (define optic-get lens-get)
 (define optic-set lens-set)
-(define optic-modify traversal-modify)
+(define optic-modify traversal-map)
 
 
 

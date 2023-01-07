@@ -117,8 +117,8 @@ of a collection. A traversal is like a first class @racket[map] and @racket[fold
 
 @examples[
   #:eval op-eval
-  (traversal-modify list-traversal '(1 2 3) add1)
-  (traversal-modify rose-traversal '((1 2) (3 ((4)))) add1)
+  (traversal-map list-traversal '(1 2 3) add1)
+  (traversal-map rose-traversal '((1 2) (3 ((4)))) add1)
   (traversal-foldl rose-traversal '((1 2) (3 ((4)))) + 0)
   (traversal->list rose-traversal '((1 2) (3 ((4)))))
 ]
@@ -129,7 +129,7 @@ one focus.
 @examples[
   #:eval op-eval
   (traversal? car-lens)
-  (traversal-modify car-lens '(1 2) number->string)
+  (traversal-map car-lens '(1 2) number->string)
   (lens? list-traversal)
 ]
 
@@ -140,7 +140,7 @@ example and it'll make more sense.
 @examples[
   #:eval op-eval
   (define lov-traversal (traversal-compose list-traversal vector-traversal))
-  (traversal-modify lov-traversal '(#(1 2 3) #(4) #()) add1)
+  (traversal-map lov-traversal '(#(1 2 3) #(4) #()) add1)
   (traversal->list lov-traversal '(#(1 2 3) #(4) #()))
 ]
 
@@ -154,11 +154,11 @@ Where things really get interesting is when we compose traversals with lenses. T
   #:eval op-eval
   (define lop-x-traversal (traversal-compose list-traversal posn-x-lens))
   (traversal? lop-x-traversal)
-  (traversal-modify lop-x-traversal (list (posn 10 20) (posn 30 40)) sqr)
+  (traversal-map lop-x-traversal (list (posn 10 20) (posn 30 40)) sqr)
   (define tree-child-value-traversal (traversal-compose tree-children-lens list-traversal tree-value-lens))
   (traversal? tree-child-value-traversal)
   tree1
-  (traversal-modify tree-child-value-traversal tree1 number->string)
+  (traversal-map tree-child-value-traversal tree1 number->string)
 ]
 
 @racket[lop-x-traversal] targets a list of @racket[posn]s and focuses on each @racket[posn]s' x-value.
@@ -183,9 +183,9 @@ of most computations. But as we'll see, there are a few more tricks that allow u
 (define tree-children-traversal (optic-compose tree-children-lens list-traversal))
 (define tree-values-traversal
   (make-traversal
-   (λ (proc tree) (traversal-modify (traversal-compose tree-children-traversal tree-values-traversal) (lens-modify tree-value-lens tree proc) proc))
+   (λ (proc tree) (traversal-map (traversal-compose tree-children-traversal tree-values-traversal) (lens-modify tree-value-lens tree proc) proc))
    (λ (proc init tree) (traversal-foldl (traversal-compose tree-children-traversal tree-values-traversal) tree proc (proc (lens-get tree-value-lens tree) init)))))
-(traversal-modify tree-values-traversal tree1 number->string)
+(traversal-map tree-values-traversal tree1 number->string)
 (traversal-foldl tree-values-traversal tree1 cons '())
 ]
 }
@@ -329,7 +329,7 @@ Now let's put it all together. Let's create a function that increments the heigh
   #:eval op-eval
   #:label #f
   (define (increment-bounds-heights lob)
-    (traversal-modify
+    (traversal-map
      (traversal-compose list-traversal bounds<->rect (struct-lens rect height))
      lob
      add1))

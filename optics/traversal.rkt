@@ -27,7 +27,7 @@
  maybe-traversal
  #;(-> traversal? target/c (-> focus/c focus/c) target/c)
  ; apply a procedure to each focus and return the updated target
- traversal-modify
+ traversal-map
  #;(-> traversal? target/c (-> focus/c any/c any/c) any/c any/c)
  ; foldl over the target's foci. Unlike list foldl, the target comes first to conform to the library's convention
  traversal-foldl
@@ -44,12 +44,12 @@
 
 
 (define-generics traversal
-  (traversal-modify traversal target proc)
+  (traversal-map traversal target proc)
   (traversal-foldl traversal target proc init))
 
 (struct make-traversal (map foldl)
   #:methods gen:traversal
-  [(define (traversal-modify t target proc)
+  [(define (traversal-map t target proc)
      ((make-traversal-map t) proc target))
    (define (traversal-foldl t target proc init)
      ((make-traversal-foldl t) proc init target))])
@@ -108,22 +108,22 @@
         (lambda (proc init val) (if val (proc val init) init))))
 
 (module+ test
-  (check-equal? (traversal-modify list-traversal '(1 2 3) add1) '(2 3 4))
+  (check-equal? (traversal-map list-traversal '(1 2 3) add1) '(2 3 4))
   (check-equal? (traversal-foldl list-traversal '(1 2 3) cons '()) '(3 2 1))
-  (check-equal? (traversal-modify vector-traversal #(1 2 3) add1) #(2 3 4))
+  (check-equal? (traversal-map vector-traversal #(1 2 3) add1) #(2 3 4))
   (check-equal? (traversal-foldl vector-traversal #(1 2 3) cons '()) '(3 2 1))
-  (check-equal? (traversal-modify identity-traversal 1 add1) 2)
+  (check-equal? (traversal-map identity-traversal 1 add1) 2)
   (check-equal? (traversal-foldl identity-traversal 1 cons '()) '(1))
-  (check-equal? (traversal-modify rose-traversal '((1) ((2 3) 4)) add1)
+  (check-equal? (traversal-map rose-traversal '((1) ((2 3) 4)) add1)
                 '((2) ((3 4) 5)))
   (check-equal? (traversal->list rose-traversal '((1) ((2 3) 4))) '(1 2 3 4))
-  (check-equal? (traversal-modify maybe-traversal 1 add1) 2)
-  (check-equal? (traversal-modify maybe-traversal #f add1) #f)
+  (check-equal? (traversal-map maybe-traversal 1 add1) 2)
+  (check-equal? (traversal-map maybe-traversal #f add1) #f)
   (check-equal? (traversal-foldl maybe-traversal 1 + 0) 1)
   (check-equal? (traversal-foldl maybe-traversal #f + 0) 0)
   (test-exn "cannot change number of targets"
             exn:fail?
-            (thunk (traversal-modify rose-traversal '((1 2)) (λ (v) (list v v))))))
+            (thunk (traversal-map rose-traversal '((1 2)) (λ (v) (list v v))))))
 
 
 
@@ -131,10 +131,10 @@
 ; compose two traversals
 (define (traversal-compose2 outer-traversal inner-traversal)
   (make-traversal (λ (inner-proc outer-target)
-                    (traversal-modify outer-traversal
+                    (traversal-map outer-traversal
                                       outer-target
                                       (λ (inner-target)
-                                        (traversal-modify inner-traversal inner-target inner-proc))))
+                                        (traversal-map inner-traversal inner-target inner-proc))))
                   (λ (proc init outer-target)
                     (traversal-foldl outer-traversal outer-target
                                      (λ (inner-target outer-acc)
@@ -143,7 +143,7 @@
 
 (module+ test
   (define lov-traversal (traversal-compose2 list-traversal vector-traversal))
-  (check-equal? (traversal-modify lov-traversal '(#(1) #(2 3)) add1) '(#(2) #(3 4)))
+  (check-equal? (traversal-map lov-traversal '(#(1) #(2 3)) add1) '(#(2) #(3 4)))
   (check-equal? (traversal-foldl lov-traversal '(#(1) #(2 3)) cons '()) '(3 2 1)))
 
 #;(-> traversal? ... traversal?)
@@ -152,7 +152,7 @@
   (foldr traversal-compose2 identity-traversal traversals))
 
 (module+ test
-  (check-equal? (traversal-modify (traversal-compose list-traversal vector-traversal)
+  (check-equal? (traversal-map (traversal-compose list-traversal vector-traversal)
                                   '(#(1))
                                   add1)
                 '(#(2))))
@@ -162,7 +162,7 @@
   (foldr traversal-append2 empty-traversal traversals))
 
 (define (traversal-append2 t1 t2)
-  (make-traversal (λ (proc target) (traversal-modify t2 (traversal-modify t1 target proc) proc))
+  (make-traversal (λ (proc target) (traversal-map t2 (traversal-map t1 target proc) proc))
                   (λ (proc init target) (traversal-foldl t2 target proc (traversal-foldl t1 target proc init)))))
 
 (module+ test
@@ -171,8 +171,8 @@
                                                    (traversal-filter odd? list-traversal))
                                  '(1 2 3 4))
                 '(2 4 1 3))
-  ; modify preserves order
-  (check-equal? (traversal-modify (traversal-append (traversal-filter even? list-traversal)
+  ; map preserves order
+  (check-equal? (traversal-map (traversal-append (traversal-filter even? list-traversal)
                                                     (traversal-filter (λ (x) (= 1 x)) list-traversal))
                                   '(1 2 3 4)
                                   -)
@@ -181,7 +181,7 @@
 ; filters a traversal's foci
 (define (traversal-filter pred traversal)
     (make-traversal (λ (proc target)
-                      (traversal-modify traversal
+                      (traversal-map traversal
                                         target
                                         (λ (focus) (if (pred focus) (proc focus) focus))))
                     (λ (proc init target)
@@ -193,7 +193,7 @@
 (module+ test
   (define even-list-traversal (traversal-filter even? list-traversal))
   (check-equal? (traversal->list even-list-traversal '(1 2 3 4)) '(2 4))
-  (check-equal? (traversal-modify even-list-traversal '(1 2 3 4) -) '(1 -2 3 -4)))
+  (check-equal? (traversal-map even-list-traversal '(1 2 3 4) -) '(1 -2 3 -4)))
 
 ; chooses a traversal based on `(pred target)`.
 ; predicate must not depend on foci. To be more precise, no modification
@@ -208,11 +208,11 @@
   (define vector-or-list-traversal (traversal-if list? list-traversal vector-traversal))
   (check-equal? (traversal->list vector-or-list-traversal '(1 2 3)) '(1 2 3))
   (check-equal? (traversal->list vector-or-list-traversal #(1 2 3)) '(1 2 3))
-  (check-equal? (traversal-modify vector-or-list-traversal '(1 2 3) add1) '(2 3 4))
-  (check-equal? (traversal-modify vector-or-list-traversal #(1 2 3) add1) #(2 3 4))
+  (check-equal? (traversal-map vector-or-list-traversal '(1 2 3) add1) '(2 3 4))
+  (check-equal? (traversal-map vector-or-list-traversal #(1 2 3) add1) #(2 3 4))
   ; recursive use, no thunk needed
   (define rose-traversal-if (traversal-if list? (traversal-compose list-traversal rose-traversal-if) identity-traversal))
-  (check-equal? (traversal-modify rose-traversal-if '((1) ((2 3)) 4 5) add1)
+  (check-equal? (traversal-map rose-traversal-if '((1) ((2 3)) 4 5) add1)
                 '((2) ((3 4)) 5 6))
   (check-equal? (traversal->list rose-traversal-if '((1) ((2 3)) 4 5)) '(1 2 3 4 5)))
 
@@ -223,8 +223,8 @@
   (let ([vector-or-list-traversal (traversal-if/strict list? list-traversal vector-traversal)])
     (check-equal? (traversal->list vector-or-list-traversal '(1 2 3)) '(1 2 3))
     (check-equal? (traversal->list vector-or-list-traversal #(1 2 3)) '(1 2 3))
-    (check-equal? (traversal-modify vector-or-list-traversal '(1 2 3) add1) '(2 3 4))
-    (check-equal? (traversal-modify vector-or-list-traversal #(1 2 3) add1) #(2 3 4))))
+    (check-equal? (traversal-map vector-or-list-traversal '(1 2 3) add1) '(2 3 4))
+    (check-equal? (traversal-map vector-or-list-traversal #(1 2 3) add1) #(2 3 4))))
 
 ; like `cond` for `traversal-if`
 ; bodies are wrapped in lazy-traversal unless the only clause is an else clause.
@@ -240,9 +240,9 @@
       [list? (traversal-compose list-traversal rose-lv-traversal)]
       [vector? (traversal-compose vector-traversal rose-lv-traversal)]
       [else identity-traversal]))
-  (check-equal? (traversal-modify rose-lv-traversal #((1) (#(2 3)) 4 5) add1)
+  (check-equal? (traversal-map rose-lv-traversal #((1) (#(2 3)) 4 5) add1)
                 #((2) (#(3 4)) 5 6))
-  (check-exn #rx"traversal-cond" (λ () (traversal-modify (traversal-cond [(const #f) identity-traversal]) 1 add1))))
+  (check-exn #rx"traversal-cond" (λ () (traversal-map (traversal-cond [(const #f) identity-traversal]) 1 add1))))
 
 ; A lazy traversal that isn't evaluated until it is used. It is evaluated at most once.
 ; Useful for creating recursive traversals.
@@ -265,13 +265,13 @@
 
 ; A traversal that depends on its target. Useful for creating a conditional traversal. See `if-traversal`.
 (define (dependent-traversal target->traversal)
-  (make-traversal (λ (proc target) (traversal-modify (target->traversal target) target proc))
+  (make-traversal (λ (proc target) (traversal-map (target->traversal target) target proc))
                   (λ (proc init target) (traversal-foldl (target->traversal target) target proc init))))
 
 (module+ test
   (let ([trv (dependent-traversal (λ (target) (if (vector? target) vector-traversal list-traversal)))])
-    (check-equal? (traversal-modify trv #(1 2 3) add1) #(2 3 4))
-    (check-equal? (traversal-modify trv '(1 2 3) add1) '(2 3 4))))
+    (check-equal? (traversal-map trv #(1 2 3) add1) #(2 3 4))
+    (check-equal? (traversal-map trv '(1 2 3) add1) '(2 3 4))))
 
 #;(-> traversal? target? (listof focus?))
 ; get a list of all foci
@@ -288,4 +288,4 @@
 (module+ test
   (define lolol-traversal (traversal-compose list-traversal list-traversal list-traversal))
   (define lolol '(((1 2) (3)) ((4)) () (()())))
-  (check-equal? (traversal-modify lolol-traversal lolol add1) '(((2 3) (4)) ((5)) () (()()))))
+  (check-equal? (traversal-map lolol-traversal lolol add1) '(((2 3) (4)) ((5)) () (()()))))

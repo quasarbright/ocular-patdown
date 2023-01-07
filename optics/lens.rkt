@@ -37,7 +37,7 @@ For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's
  lens-set
  #;(-> lens? target/c (-> focus/c focus/c) target/c)
  ; apply a function to the focus
- ; alias for traversal-modify
+ ; alias for traversal-map
  lens-modify
  #;(-> lens? ... lens?)
  ; compose lenses where the first lens is shallow and the last is deep
@@ -86,7 +86,7 @@ For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's
    (define (lens-set lens target focus)
      ((make-lens-setter lens) target focus))]
   #:methods gen:traversal
-  [(define (traversal-modify lens target proc)
+  [(define (traversal-map lens target proc)
      (lens-set lens target (proc (lens-get lens target))))
    (define (traversal-foldl lens target proc init)
      (proc (lens-get lens target) init))])
@@ -109,8 +109,8 @@ For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's
 
 #; (-> lens? any/c (-> any/c any/c) any/c)
 ; applies func to focus and updates target
-; alias for traversal-modify
-(define lens-modify traversal-modify)
+; alias for traversal-map
+(define lens-modify traversal-map)
 
 (module+ test
   (check-equal? (lens-get car-lens (cons 1 2)) 1)

@@ -45,7 +45,7 @@ iso-modify handles the conversions so you can focus on the interesting stuff.
  #; 'FOO
  ; Useful for treating a target like a focus. But be careful! The procedure must return a new focus,
  ; not just any value.
- ; Alias for traversal-modify
+ ; Alias for traversal-map
  iso-modify
   #;(-> iso? iso?)
  ; create a new iso with swapped forward and backward converters.
@@ -90,7 +90,7 @@ iso-modify handles the conversions so you can focus on the interesting stuff.
   [(define (prism-project iso target [_ #f]) (iso-forward iso target))
    (define (prism-inject iso focus) (iso-backward iso focus))]
   #:methods gen:traversal
-  [(define (traversal-modify iso target proc)
+  [(define (traversal-map iso target proc)
      (iso-backward iso (proc (iso-forward iso target))))
    (define (traversal-foldl iso target proc init)
      (proc (iso-forward iso target) init))])
@@ -113,7 +113,7 @@ iso-modify handles the conversions so you can focus on the interesting stuff.
   (check-equal? (iso-forward list-reverse-iso '(1 2 3)) '(3 2 1))
   (check-equal? (iso-backward list-reverse-iso '(1 2 3)) '(3 2 1)))
 
-(define iso-modify traversal-modify)
+(define iso-modify traversal-map)
 
 
 
