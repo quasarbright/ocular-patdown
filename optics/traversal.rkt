@@ -25,6 +25,24 @@
  rose-traversal
  ; A traversal that focuses on the target if it is not #f, and has no focus otherwise.
  maybe-traversal
+ ; A lazy traversal that isn't evaluated until it is used. It is evaluated at most once.
+ ; Useful for creating recursive traversals.
+ lazy-traversal
+ #;(-> (-> target/c traversal?) traversal?)
+ ; a traversal that depends on its target. Useful for creating conditional traversals like traversal-cond.
+ dependent-traversal
+ ; conditional traversal like if
+ traversal-if
+ ; conditional traversal like cond
+ traversal-cond
+ #;(traversal? ... -> traversal?)
+ ; A traversal that focuses on the foci of each traversal
+ ; traversals must have non-overlapping foci for all targets
+ traversal-append
+ #;(predicate? traversal? -> traversal?)
+ ; A traversal that filters the foci of the given traversal.
+ ; Be very careful. It is basically impossible to make this generally lawful.
+ traversal-filter
  #;(-> traversal? target/c (-> focus/c focus/c) target/c)
  ; apply a procedure to each focus and return the updated target
  traversal-map

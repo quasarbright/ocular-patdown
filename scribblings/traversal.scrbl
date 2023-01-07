@@ -110,7 +110,7 @@ All @tech{lens}es are traversals, but not all traversals are lenses.
 @defthing[rose-traversal traversal?]{
   Traversal that focuses on each leaf of a rose tree, where a rose tree is either a non-list or a list of rose trees.
 
-  Raises an exception when modification results in a focus turning into a list since this could lead to the number of targets changing.
+  Raises an exception when mapping results in a focus turning into a list since this could lead to the number of targets changing.
 
   @examples[
     #:eval op-eval
@@ -131,6 +131,66 @@ All @tech{lens}es are traversals, but not all traversals are lenses.
     (traversal-map (traversal-compose list-traversal maybe-traversal car-lens)
                       '(#f (10 20 30) #f (40 50))
                       sqr)
+  ]
+}
+
+@section{Traversal Combinators}
+
+@defproc[(traversal-append [trv traversal?] ...) traversal?]{
+  A traversal that focuses on the foci of each traversal.
+  Useful when you have multiple traversals with the same target but different foci
+  and want to combine them.
+
+  @examples[
+    #:eval op-eval
+    (traversal-map (traversal-append car-lens cdr-lens) add1 (cons 1 2))
+  ]
+
+  Note: In order for this to be a lawful traversal, the foci of the input traversals must never have
+  overlap.
+}
+
+@defform[(traversal-if pred then-traversal else-traversal)]{
+  A conditional traversal that has the behavior of either @racket[then-traversal] or @racket[else-traversal]
+  depending on the result of applying the predicate to the target. Useful for creating recursive traversals.
+
+  Wraps @racket[then-traversal] and @racket[else-traversal] with @racket[lazy-traversal].
+
+  @examples[
+    #:eval op-eval
+    (struct bt [left right] #:transparent)
+    (struct leaf [value] #:transparent)
+    (define bt-values-traversal
+      (traversal-if bt?
+                    (traversal-compose (traversal-append (struct-lens bt left) (struct-lens bt right))
+                                       bt-values-traversal)
+                    (struct-lens leaf value)))
+    (define bt1 (bt (leaf 1)
+                    (bt (bt (leaf 2)
+                            (bt (leaf 3)
+                                (leaf 4)))
+                        (leaf 5))))
+    (traversal->list bt-values-traversal bt1)
+    (traversal-map bt-values-traversal add1 bt1)
+  ]
+}
+
+@defform[(lazy-traversal body ...)]{
+  A @racket[lazy] traversal that evaluates @racket[body ...] at most once. Useful for creating
+  recursive traversals.
+
+  @examples[
+    #:eval op-eval
+    (struct tree [value children] #:transparent)
+    (define tree1 (tree 1 (list (tree 2 (list (tree 3 '())))
+                                (tree 4 '()))))
+    (define tree-value-lens (struct-lens tree value))
+    (define tree-children-lens (struct-lens tree children))
+    (define tree-children-traversal (traversal-compose tree-children-lens list-traversal))
+    (define tree-values-traversal
+      (lazy-traversal (traversal-append tree-value-lens
+                                        (traversal-compose tree-children-traversal tree-values-traversal))))
+    (check-equal? (traversal-foldl tree-values-traversal tree1 + 0) 10)
   ]
 }
 
