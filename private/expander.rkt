@@ -62,7 +62,7 @@
 
 
 
-(require bindingspec
+(require syntax-spec
          "../optics/traversal.rkt"
          "../optics/isomorphism.rkt"
          "../optics/lens.rkt"
@@ -70,33 +70,34 @@
          (for-syntax syntax/parse syntax/transformer syntax/parse/class/struct-id))
 
 
-
-(define-hosted-syntaxes
-
-  (binding-class var #:description "pattern variable")
+(syntax-spec
   (extension-class pattern-macro
                    #:description "update pattern macro"
                    #:binding-space pattern-update)
 
-  (nonterminal pat-top
-               #:description "pattern"
-               p:pat
-               #:binding (nest-one p []))
+  (nonterminal/two-pass pat
+                        #:description "pattern"
+                        #:allow-extension pattern-macro
+                        #:binding-space pattern-update
+                        v:racket-var
+                        #:binding (export v)
+                        _
+                        (optic target?:racket-expr o:racket-expr p:pat)
+                        #:binding (re-export p)
+                        (and2 p1:pat p2:pat)
+                        #:binding (re-export p1 p2)
+                        (#%? pred:racket-expr))
 
-  (nesting-nonterminal pat (body)
-                       #:description "pattern"
-                       #:allow-extension pattern-macro
-                       #:binding-space pattern-update
-                       v:var
-                       #:binding {(bind v) body}
-                       _
-                       #:binding {body}
-                       (optic target?:expr o:expr p:pat)
-                       #:binding [(nest-one p body) (host target?) (host o)]
-                       (and2 p1:pat p2:pat)
-                       #:binding (nest-one p1 (nest-one p2 body))
-                       (#%? pred:expr)
-                       #:binding [{body} (host pred)]))
+  (host-interface/expression (update* target:racket-expr p:pat body:racket-expr on-fail:racket-expr)
+    ; TODO need host body?
+    #:binding {(recursive p) body}
+    #'(let ([on-fail-proc (thunk on-fail)]
+            [target-v target])
+        (validate-target target-v p
+                         (bind-optics identity-iso p
+                                      (parameterize ([current-update-target target-v])
+                                        body))
+                         on-fail-proc))))
 
 (define-for-syntax (get-struct-pred-id struct-id-stx)
   (syntax-parse struct-id-stx
@@ -131,18 +132,6 @@
      #'(update* target pat (let () body ...) (update target clause ...))]
     [(_ target)
      #'(error 'update "no matching clause for ~v" target)]))
-
-; on-fail is the expression to evaluate upon failure. not a thunk.
-(define-host-interface/expression (update* target:expr p:pat body:expr on-fail:expr)
-  #:binding {(nest-one p (host body))}
-  #'(with-reference-compilers ([var mutable-reference-compiler])
-      (let ([on-fail-proc (thunk on-fail)]
-            [target-v target])
-        (validate-target target-v p
-                         (bind-optics identity-iso p
-                                      (parameterize ([current-update-target target-v])
-                                        body))
-                         on-fail-proc))))
 
 (begin-for-syntax
   (define-literal-set pattern-literals
@@ -191,8 +180,7 @@
      (syntax-parse #'p
        #:literal-sets (pattern-literals)
        [var:id
-        #:with var^ (compile-binder! #'var)
-        #'(let-syntax ([var^ (make-optic-set!-transformer #'current-optic)])
+        #'(let-syntax ([var (make-optic-set!-transformer #'current-optic)])
             body)]
        [_
         #'body]
