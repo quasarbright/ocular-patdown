@@ -190,7 +190,7 @@ As such, @racket[forward] and @racket[backward] should be inverse functions of e
 ]{
 
 Matches a value that satisfies @racket[target?]. Matches @racket[pat] against the @tech{focus} or foci of @racket[optic-expr], where @racket[optic-expr] is an @tech{optic}. Composes @racket[optic-expr].
-This is useful for using optics as patterns and defining new patterns using optics and @racket[define-pattern-syntax]. In fact, most of the standard patterns are defined
+This is useful for using optics as patterns and defining new patterns using optics and @racket[define-update-syntax]. In fact, most of the standard patterns are defined
 this way.
 
 @examples[
@@ -265,21 +265,21 @@ this way.
 
 @section{Extending Update}
 
-@defform*[((define-pattern-syntax id transformer-expr)
-           (define-pattern-syntax (id arg-id ...) body-expr ...+))
+@defform*[((define-update-syntax id transformer-expr)
+           (define-update-syntax (id arg-id ...) body-expr ...+))
            #:contracts ([transformer-expr (-> syntax? syntax?)])]{
   Like @racket[define-syntax], but defines a macro for patterns in @racket[update]. Macro names are only visible within @racket[update] expressions, so they will not shadow names provided by Racket.
 
   The first form defines a macro named @racket[id] bound to @racket[transformer-expr]. The second form is shorthand for
   @racketblock[
-    (define-pattern-syntax id
+    (define-update-syntax id
       (lambda (arg-id ...)
         (begin body-expr ...)))
   ]
 
   @examples[
     #:eval op-eval
-    (define-pattern-syntax posn
+    (define-update-syntax posn
       (syntax-rules ()
         [(posn x-pat y-pat)
          (and (struct-field posn x x-pat) (struct-field posn y y-pat))]))

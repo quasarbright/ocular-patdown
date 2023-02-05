@@ -58,9 +58,7 @@
                     ; Useful for treating a symbol as a string, for example.
                     iso)
          ; like define-syntax, but defines a macro for patterns.
-         define-pattern-syntax)
-
-
+         define-update-syntax)
 
 (require syntax-spec
          "../optics/traversal.rkt"
@@ -68,7 +66,6 @@
          "../optics/lens.rkt"
          "../optics/optic.rkt"
          (for-syntax syntax/parse syntax/transformer syntax/parse/class/struct-id))
-
 
 (syntax-spec
   (extension-class pattern-macro
@@ -89,7 +86,6 @@
                         (#%? pred:racket-expr))
 
   (host-interface/expression (update* target:racket-expr p:pat body:racket-expr on-fail:racket-expr)
-    ; TODO need host body?
     #:binding {(recursive p) body}
     #'(let ([on-fail-proc (thunk on-fail)]
             [target-v target])
@@ -108,23 +104,18 @@
   (syntax-parser
     [(_ name:id rhs:expr)
      #:with spaced-name ((make-interned-syntax-introducer 'pattern-update) (attribute name) 'add)
-     #'(define-syntax spaced-name rhs)]))
+     #'(define-syntax spaced-name (pattern-macro rhs))]))
 
-(define-syntax define-pattern-syntax
-  (syntax-parser
-    [(_ (macro-name:id args ...) body ...+) #'(define-pattern-syntax macro-name (λ (args ...) body ...))]
-    [(_ macro-name:id transformer) #'(define-update-syntax macro-name (pattern-macro transformer))]))
-
-(define-pattern-syntax cons (syntax-rules () [(cons a d) (and (optic cons? car-lens a) (optic cons? cdr-lens d))]))
-(define-pattern-syntax list (syntax-rules () [(list) (? null?)] [(list p0 p ...) (cons p0 (list p ...))]))
-(define-pattern-syntax list-of (syntax-rules () [(listof p) (optic list? list-traversal p)]))
-(define-pattern-syntax struct-field
+(define-update-syntax cons (syntax-rules () [(cons a d) (and (optic cons? car-lens a) (optic cons? cdr-lens d))]))
+(define-update-syntax list (syntax-rules () [(list) (? null?)] [(list p0 p ...) (cons p0 (list p ...))]))
+(define-update-syntax list-of (syntax-rules () [(listof p) (optic list? list-traversal p)]))
+(define-update-syntax struct-field
   (syntax-parser [(_ struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
                   (define/syntax-parse predicate (get-struct-pred-id #'struct-name))
                   #'(optic predicate (struct-lens struct-name field-name) field-pat)]))
-(define-pattern-syntax iso (syntax-rules () [(iso target? forward backward pat) (optic target? (make-iso forward backward) pat)]))
-(define-pattern-syntax and (syntax-rules () [(and) _] [(and p0 p ...) (and2 p0 (and p ...))]))
-(define-pattern-syntax ? (syntax-rules () [(? predicate p ...) (and (#%? predicate) p ...)]))
+(define-update-syntax iso (syntax-rules () [(iso target? forward backward pat) (optic target? (make-iso forward backward) pat)]))
+(define-update-syntax and (syntax-rules () [(and) _] [(and p0 p ...) (and2 p0 (and p ...))]))
+(define-update-syntax ? (syntax-rules () [(? predicate p ...) (and (#%? predicate) p ...)]))
 
 (define-syntax update
   (syntax-parser
