@@ -143,7 +143,7 @@ All @tech{lens}es are traversals, but not all traversals are lenses.
 
   @examples[
     #:eval op-eval
-    (traversal-map (traversal-append car-lens cdr-lens) add1 (cons 1 2))
+    (traversal-map (traversal-append car-lens cdr-lens) (cons 1 2) add1)
   ]
 
   Note: In order for this to be a lawful traversal, the foci of the input traversals must never have
@@ -171,7 +171,7 @@ All @tech{lens}es are traversals, but not all traversals are lenses.
                                 (leaf 4)))
                         (leaf 5))))
     (traversal->list bt-values-traversal bt1)
-    (traversal-map bt-values-traversal add1 bt1)
+    (traversal-map bt-values-traversal bt1 add1)
   ]
 }
 
@@ -190,7 +190,7 @@ All @tech{lens}es are traversals, but not all traversals are lenses.
     (define tree-values-traversal
       (lazy-traversal (traversal-append tree-value-lens
                                         (traversal-compose tree-children-traversal tree-values-traversal))))
-    (check-equal? (traversal-foldl tree-values-traversal tree1 + 0) 10)
+    (traversal-foldl tree-values-traversal tree1 + 0)
   ]
 }
 
