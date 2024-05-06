@@ -60,7 +60,7 @@
          ; like define-syntax, but defines a macro for patterns.
          define-update-syntax)
 
-(require syntax-spec
+(require syntax-spec-v1
          "../optics/traversal.rkt"
          "../optics/isomorphism.rkt"
          "../optics/lens.rkt"
