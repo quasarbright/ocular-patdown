@@ -32,7 +32,7 @@
  ; a traversal that depends on its target. Useful for creating conditional traversals like traversal-cond.
  dependent-traversal
  ; conditional traversal like if
- traversal-if
+ if-traversal
  ; conditional traversal like cond
  traversal-cond
  #;(traversal? ... -> traversal?)
@@ -218,39 +218,39 @@
 ; may cause the truthiness of `(pred target)` to change.
 ; then-traversal and else-traversal are wrapped in lazy-traversal.
 (define-syntax-rule
-  (traversal-if pred then-traversal else-traversal)
+  (if-traversal pred then-traversal else-traversal)
   (let ([pred-v pred])
-    (traversal-if/strict pred (lazy-traversal then-traversal) (lazy-traversal else-traversal))))
+    (if-traversal/strict pred (lazy-traversal then-traversal) (lazy-traversal else-traversal))))
 
 (module+ test
-  (define vector-or-list-traversal (traversal-if list? list-traversal vector-traversal))
+  (define vector-or-list-traversal (if-traversal list? list-traversal vector-traversal))
   (check-equal? (traversal->list vector-or-list-traversal '(1 2 3)) '(1 2 3))
   (check-equal? (traversal->list vector-or-list-traversal #(1 2 3)) '(1 2 3))
   (check-equal? (traversal-map vector-or-list-traversal '(1 2 3) add1) '(2 3 4))
   (check-equal? (traversal-map vector-or-list-traversal #(1 2 3) add1) #(2 3 4))
   ; recursive use, no thunk needed
-  (define rose-traversal-if (traversal-if list? (traversal-compose list-traversal rose-traversal-if) identity-traversal))
-  (check-equal? (traversal-map rose-traversal-if '((1) ((2 3)) 4 5) add1)
+  (define rose-if-traversal (if-traversal list? (traversal-compose list-traversal rose-if-traversal) identity-traversal))
+  (check-equal? (traversal-map rose-if-traversal '((1) ((2 3)) 4 5) add1)
                 '((2) ((3 4)) 5 6))
-  (check-equal? (traversal->list rose-traversal-if '((1) ((2 3)) 4 5)) '(1 2 3 4 5)))
+  (check-equal? (traversal->list rose-if-traversal '((1) ((2 3)) 4 5)) '(1 2 3 4 5)))
 
-(define (traversal-if/strict pred then-traversal else-traversal)
+(define (if-traversal/strict pred then-traversal else-traversal)
   (dependent-traversal (λ (target) (if (pred target) then-traversal else-traversal))))
 
 (module+ test
-  (let ([vector-or-list-traversal (traversal-if/strict list? list-traversal vector-traversal)])
+  (let ([vector-or-list-traversal (if-traversal/strict list? list-traversal vector-traversal)])
     (check-equal? (traversal->list vector-or-list-traversal '(1 2 3)) '(1 2 3))
     (check-equal? (traversal->list vector-or-list-traversal #(1 2 3)) '(1 2 3))
     (check-equal? (traversal-map vector-or-list-traversal '(1 2 3) add1) '(2 3 4))
     (check-equal? (traversal-map vector-or-list-traversal #(1 2 3) add1) #(2 3 4))))
 
-; like `cond` for `traversal-if`
+; like `cond` for `if-traversal`
 ; bodies are wrapped in lazy-traversal unless the only clause is an else clause.
 (define-syntax traversal-cond
   (syntax-parser
     [(_ [(~literal else) body]) #'body]
-    [(_ [pred body]) #'(traversal-if pred body (error 'traversal-cond "all traversal-cond predicates failed"))]
-    [(_ [pred body] clause ...+) #'(traversal-if pred body (traversal-cond clause ...))]))
+    [(_ [pred body]) #'(if-traversal pred body (error 'traversal-cond "all traversal-cond predicates failed"))]
+    [(_ [pred body] clause ...+) #'(if-traversal pred body (traversal-cond clause ...))]))
 
 (module+ test
   (define rose-lv-traversal

@@ -110,7 +110,7 @@ All @tech{lens}es are traversals, but not all traversals are lenses.
 @defthing[rose-traversal traversal?]{
   Traversal that focuses on each leaf of a rose tree, where a rose tree is either a non-list or a list of rose trees.
 
-  Raises an exception when mapping results in a focus turning into a list since this could lead to the number of targets changing.
+  Raises an exception when mapping results in a focus turning into a list since this could lead to the number of foci changing.
 
   @examples[
     #:eval op-eval
@@ -150,7 +150,7 @@ All @tech{lens}es are traversals, but not all traversals are lenses.
   overlap.
 }
 
-@defform[(traversal-if pred then-traversal else-traversal)]{
+@defform[(if-traversal pred then-traversal else-traversal)]{
   A conditional traversal that has the behavior of either @racket[then-traversal] or @racket[else-traversal]
   depending on the result of applying the predicate to the target. Useful for creating recursive traversals.
 
@@ -161,7 +161,7 @@ All @tech{lens}es are traversals, but not all traversals are lenses.
     (struct bt [left right] #:transparent)
     (struct leaf [value] #:transparent)
     (define bt-values-traversal
-      (traversal-if bt?
+      (if-traversal bt?
                     (traversal-compose (traversal-append (struct-lens bt left) (struct-lens bt right))
                                        bt-values-traversal)
                     (struct-lens leaf value)))
@@ -173,6 +173,9 @@ All @tech{lens}es are traversals, but not all traversals are lenses.
     (traversal->list bt-values-traversal bt1)
     (traversal-map bt-values-traversal bt1 add1)
   ]
+
+  In order for such a traversal to be lawful, it is a good idea to make sure it's impossible for @racket[traversal-map] to change the result on the condition of the target.
+  In other words, if a target will end up using @racket[then-traversal], mapping over its foci better not cause the resulting target to use the @racket[else-traversal] or vice versa. That's why @racket[rose-traversal] has the restriction that the mapped procedure cannot return a list.
 }
 
 @defform[(lazy-traversal body ...)]{
