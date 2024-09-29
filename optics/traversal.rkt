@@ -10,12 +10,13 @@
  #;(-> (-> (-> focus/c focus/c) target/c target/c)
        (-> (-> focus/c any/c any/c) any/c target/c any/c)
        traversal?)
- ; Create a traversal from a mapping function and a function that generates a sequence of all foci
- ; The order of arguments goes against the convention of the lens library, but matches the convention of
- ; map to make the creation of traversals easier.
- ; example:
- #;(define list-map-traversal (make-traversal map foldl))
- make-traversal
+ (contract-out
+  ; Create a traversal from a mapping function and a function that generates a sequence of all foci
+  ; The order of arguments goes against the convention of the lens library, but matches the convention of
+  ; map to make the creation of traversals easier.
+  ; example:
+  #;(define list-map-traversal (make-traversal map foldl))
+  [make-traversal (-> (-> (-> any/c any/c) any/c any/c) (-> (-> any/c any/c any/c) any/c any/c any/c) traversal?)])
  ; traversal that focuses on all elements of a list.
  list-traversal
  ; traversal that focuses on all elements of a vector.
@@ -28,34 +29,34 @@
  ; A lazy traversal that isn't evaluated until it is used. It is evaluated at most once.
  ; Useful for creating recursive traversals.
  lazy-traversal
- #;(-> (-> target/c traversal?) traversal?)
- ; a traversal that depends on its target. Useful for creating conditional traversals like traversal-cond.
- dependent-traversal
+ (contract-out
+  #;(-> (-> target/c traversal?) traversal?)
+  ; a traversal that depends on its target. Useful for creating conditional traversals like traversal-cond.
+  [dependent-traversal (-> (-> any/c traversal?) traversal?)])
  ; conditional traversal like if
  if-traversal
  ; conditional traversal like cond
  traversal-cond
- #;(traversal? ... -> traversal?)
- ; A traversal that focuses on the foci of each traversal
- ; traversals must have non-overlapping foci for all targets
- traversal-append
- #;(predicate? traversal? -> traversal?)
- ; A traversal that filters the foci of the given traversal.
- ; Be very careful. It is basically impossible to make this generally lawful.
- traversal-filter
- #;(-> traversal? target/c (-> focus/c focus/c) target/c)
- ; apply a procedure to each focus and return the updated target
- traversal-map
- #;(-> traversal? target/c (-> focus/c any/c any/c) any/c any/c)
- ; foldl over the target's foci. Unlike list foldl, the target comes first to conform to the library's convention
- traversal-foldl
- ; compose traversals. deepest/innermost traversal last.
- traversal-compose
- #;(-> traversal? target? (listof focus?))
- ; get a list of all foci
- traversal->list)
-
-
+ (contract-out
+  #;(traversal? ... -> traversal?)
+  ; A traversal that focuses on the foci of each traversal
+  ; traversals must have non-overlapping foci for all targets
+  [traversal-append (->* () #:rest (listof traversal?) traversal?)]
+  #;(predicate? traversal? -> traversal?)
+  ; A traversal that filters the foci of the given traversal.
+  ; Be very careful. It is basically impossible to make this generally lawful.
+  [traversal-filter (-> (-> any/c any/c) traversal? traversal?)]
+  #;(-> traversal? target/c (-> focus/c focus/c) target/c)
+  ; apply a procedure to each focus and return the updated target
+  [traversal-map (-> traversal? any/c (-> any/c any/c) any/c)]
+  #;(-> traversal? target/c (-> focus/c any/c any/c) any/c any/c)
+  ; foldl over the target's foci. Unlike list foldl, the target comes first to conform to the library's convention
+  [traversal-foldl (-> traversal? any/c (-> any/c any/c any/c) any/c any/c)]
+  ; compose traversals. deepest/innermost traversal last.
+  [traversal-compose (->* () #:rest (listof traversal?) traversal?)]
+  #;(-> traversal? target? (listof focus?))
+  ; get a list of all foci
+  [traversal->list (-> traversal? any/c (listof any/c))]))
 
 (require racket/generic racket/generator (for-syntax syntax/parse))
 

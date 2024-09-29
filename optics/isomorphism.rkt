@@ -25,35 +25,36 @@ iso-modify handles the conversions so you can focus on the interesting stuff.
  gen:iso
  ; isomorphism predicate
  iso?
- #;(-> (-> target/c focus/c) (-> focus/c target/c) iso?)
- ; Create an isomorphism from two functions that are inverses of each other. Ex:
- #; (define symbol<->string symbol->string string->symbol)
- ; In general, you want the type that you're working with on the left and
- ; the type you want to want to treat it like on the right. In symbol<->string, we have symbols
- ; and want to treat them like strings.
- ; The target is the symbol and the focus is the string.
- make-iso
- #;(-> iso? target/c focus/c)
- ; convert target to focus
- iso-forward
- #;(-> iso? focus/c target/c)
- ; convert focus to target
- iso-backward
-#;(-> iso? target/c (-> focus/c focus/c) target/c)
- ; apply a function to the iso's focus and return the modified target. Ex:
- #; (iso-modify symbol<->string 'foo string-upcase)
- #; 'FOO
- ; Useful for treating a target like a focus. But be careful! The procedure must return a new focus,
- ; not just any value.
- ; Alias for traversal-map
- iso-modify
+ (contract-out
+  #;(-> (-> target/c focus/c) (-> focus/c target/c) iso?)
+  ; Create an isomorphism from two functions that are inverses of each other. Ex:
+  #; (define symbol<->string symbol->string string->symbol)
+  ; In general, you want the type that you're working with on the left and
+  ; the type you want to want to treat it like on the right. In symbol<->string, we have symbols
+  ; and want to treat them like strings.
+  ; The target is the symbol and the focus is the string.
+  [make-iso (-> (-> any/c any/c) (-> any/c any/c) iso?)]
+  #;(-> iso? target/c focus/c)
+  ; convert target to focus
+  [iso-forward (-> iso? any/c any/c)]
+  #;(-> iso? focus/c target/c)
+  ; convert focus to target
+  [iso-backward (-> iso? any/c any/c)]
+  #;(-> iso? target/c (-> focus/c focus/c) target/c)
+  ; apply a function to the iso's focus and return the modified target. Ex:
+  #; (iso-modify symbol<->string 'foo string-upcase)
+  #; 'FOO
+  ; Useful for treating a target like a focus. But be careful! The procedure must return a new focus,
+  ; not just any value.
+  ; Alias for traversal-map
+  [iso-modify (-> iso? any/c (-> any/c any/c) any/c)]
   #;(-> iso? iso?)
- ; create a new iso with swapped forward and backward converters.
- iso-reverse
- #;(-> iso? ... iso?)
- ; compose isomorphisms. Ex:
- #;(define a<->c (iso-compose a<->b b<->c))
- iso-compose
+  ; create a new iso with swapped forward and backward converters.
+  [iso-reverse (-> iso? iso?)]
+  #;(-> iso? ... iso?)
+  ; compose isomorphisms. Ex:
+  #;(define a<->c (iso-compose a<->b b<->c))
+  [iso-compose (->* () #:rest (listof iso?) iso?)])
  ; isomorphism where the target is a symbol and the focus is a string.
  symbol<->string
  ; isomorphism where the target is a vector and the focus is a list.

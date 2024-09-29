@@ -6,10 +6,11 @@
 (module+ test (require rackunit))
 (provide
  optic?
- optic-compose
- optic-get
- optic-set
- optic-modify)
+ (contract-out
+  [optic-compose (->* () #:rest (listof optic?) optic?)]
+  [optic-get (-> optic? any/c any/c)]
+  [optic-set (-> optic? any/c any/c any/c)]
+  [optic-modify (-> optic? any/c (-> any/c any/c) any/c)]))
 
 
 

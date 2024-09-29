@@ -1,23 +1,30 @@
 #lang racket
 
 (module+ test (require rackunit))
+(require syntax-spec-v1
+         "../optics/traversal.rkt"
+         "../optics/isomorphism.rkt"
+         "../optics/lens.rkt"
+         "../optics/optic.rkt"
+         (for-syntax syntax/parse syntax/transformer syntax/parse/class/struct-id))
 (provide #;(update expr [pattern body ...+] ...)
          ; like match, but can also be used for immutably updating values.
          ; Use get, set, modify, etc. on pattern-bound variables.
          ; Under the hood, variables are bound to optics like lenses and traversals
          update
-         #;(-> lens? any/c)
-         ; get the value
-         get
-         #;(-> lens? any/c any/c)
-         ; set the value. You can also just use set!.
-         optic-set!
-         #;(-> lens? (-> any/c any/c) any/c)
-         ; apply a function to update the value(s)
-         modify!
-         #;(-> lens? (-> A B B) B B)
-         ; foldl over the values
-         fold
+         (contract-out
+          #;(-> lens? any/c)
+          ; get the value
+          [get (-> lens? any/c)]
+          #;(-> lens? any/c any/c)
+          ; set the value. You can also just use set!.
+          [optic-set! (-> lens? any/c any/c)]
+          #;(-> traversal? (-> any/c any/c) any/c)
+          ; apply a function to update the value(s)
+          [modify! (-> traversal? (-> any/c any/c) any/c)]
+          #;(-> traversal? (-> A B B) B B)
+          ; foldl over the values
+          [fold (-> traversal? (-> any/c any/c any/c) any/c any/c)])
          ; a parameter for the current update target. Gets updated by set, modify, etc.
          ; Useful for using optics with low-level functions. Ex:
          #;(update (list 1 2) [(list a b) (optic-set a (current-update-target) 3)])
@@ -59,13 +66,6 @@
                     iso)
          ; like define-syntax, but defines a macro for patterns.
          define-update-syntax)
-
-(require syntax-spec-v1
-         "../optics/traversal.rkt"
-         "../optics/isomorphism.rkt"
-         "../optics/lens.rkt"
-         "../optics/optic.rkt"
-         (for-syntax syntax/parse syntax/transformer syntax/parse/class/struct-id))
 
 (syntax-spec
   (extension-class pattern-macro

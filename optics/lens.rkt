@@ -24,26 +24,27 @@ For example, (lens-compose circle-center-lens posn-x-lens) focuses on a circle's
  #;(-> any/c boolean?)
  ; lens predicate
  lens?
- #;(make-lens getter setter)
- #;(-> (-> target/c focus/c) (-> target/c focus/c target/c) lens?)
- ; (getter target) retrieves the focus from the target
- ; (setter target new-focus) returns a copy of the target with the old focus replaced by the new one
- make-lens
- #;(-> lens? target/c focus/c)
- ; get the focus
- lens-get
- #;(-> lens? target/c focus/c target/c)
- ; set the focus
- lens-set
- #;(-> lens? target/c (-> focus/c focus/c) target/c)
- ; apply a function to the focus
- ; alias for traversal-map
- lens-modify
- #;(-> lens? ... lens?)
- ; compose lenses where the first lens is shallow and the last is deep
- ; for example, (lens-compose circle-center-lens posn-x-lens) focuses on
- ; the x-coordinate of the center of a circle
- lens-compose
+ (contract-out
+  #;(make-lens getter setter)
+  #;(-> (-> target/c focus/c) (-> target/c focus/c target/c) lens?)
+  ; (getter target) retrieves the focus from the target
+  ; (setter target new-focus) returns a copy of the target with the old focus replaced by the new one
+  [make-lens (-> (-> any/c any/c) (-> any/c any/c any/c) lens?)]
+  #;(-> lens? target/c focus/c)
+  ; get the focus
+  [lens-get (-> lens? any/c any/c)]
+  #;(-> lens? target/c focus/c target/c)
+  ; set the focus
+  [lens-set (-> lens? any/c any/c any/c)]
+  #;(-> lens? target/c (-> focus/c focus/c) target/c)
+  ; apply a function to the focus
+  ; alias for traversal-map
+  [lens-modify (-> lens? any/c (-> any/c any/c) any/c)]
+  #;(-> lens? ... lens?)
+  ; compose lenses where the first lens is shallow and the last is deep
+  ; for example, (lens-compose circle-center-lens posn-x-lens) focuses on
+  ; the x-coordinate of the center of a circle
+  [lens-compose (->* () #:rest (listof lens?) lens?)])
  #;lens?
  ; focus is the same as the target. setting the focus replaces the target.
  ; identity of lens composition

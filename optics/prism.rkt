@@ -18,16 +18,15 @@ to create the target from the focus alone.
  #;(-> (-> target/c (or/c focus/c prism-absent?))
        (-> focus/c target/c)
        prism?)
+ string-number-prism
  ; Create a prism from a projector and an injector
  ; The projector may return (prism-absent) if the focus is not present.
- make-prism
- string-number-prism
- guard-prism
- prism-project
- prism-inject
- prism-compose)
-
-
+ (contract-out
+  [make-prism (-> any/c (or/c any/c prism-absent?) any/c)]
+  [guard-prism (-> (-> any/c any/c) prism?)]
+  [prism-project (->* (prism? any/c) ((or/c any/c (-> any/c))) any/c)]
+  [prism-inject (-> prism? any/c any/c)]
+  [prism-compose (->* () #:rest (listof prism?) prism?)]))
 
 (require racket/generic
          "./traversal.rkt")
