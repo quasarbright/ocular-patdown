@@ -1,5 +1,6 @@
 #lang info
 (define collection "ocular-patdown")
+(define license 'MIT)
 (define deps '("base" "syntax-classes-lib" "syntax-spec-v1"))
 (define build-deps '("scribble-lib" "racket-doc" "rackunit-lib"))
 (define scribblings '(("scribblings/main.scrbl" (multi-page) (experimental) "ocular-patdown")))
