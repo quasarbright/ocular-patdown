@@ -1,7 +1,7 @@
 #lang racket
 
 (module+ test (require rackunit))
-(require syntax-spec-v1
+(require syntax-spec-v2
          "../optics/traversal.rkt"
          "../optics/isomorphism.rkt"
          "../optics/lens.rkt"
@@ -72,7 +72,7 @@
                    #:description "update pattern macro"
                    #:binding-space pattern-update)
 
-  (nonterminal/two-pass pat
+  (nonterminal/exporting pat
                         #:description "pattern"
                         #:allow-extension pattern-macro
                         #:binding-space pattern-update
@@ -86,7 +86,7 @@
                         (#%? pred:racket-expr))
 
   (host-interface/expression (update* target:racket-expr p:pat body:racket-expr on-fail:racket-expr)
-    #:binding {(recursive p) body}
+    #:binding (scope (import p) body)
     #'(let ([on-fail-proc (thunk on-fail)]
             [target-v target])
         (validate-target target-v p
