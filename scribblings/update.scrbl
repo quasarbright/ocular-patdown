@@ -17,41 +17,44 @@
 ([clause [pat body ...+]])
 ]
 
-Like @racket[match], but binds @tech{optic}s. Patterns can be thought of as trees of optic compositions (see @racket[optic-compose]) with variables as leaves, binding composed optics.
+Like @racket[match] for performing immutable updates. Also useful for creating composed optics.
+
+@examples[#:eval op-eval
+(update (list 1 2 3) [(list a b c) (set! a #t) (modify! b -)])
+]
+
+Patterns act like trees of optic compositions (see @racket[optic-compose]) with variables as leaves, binding composed optics.
 
 @examples[
  #:eval op-eval
  (update (list 1 2 3) [(list a b c) b])
 ]
 
-Use @racket[current-update-target] to use the optics on the target of the update.
-
-@examples[
-  #:eval op-eval
- (update (list 1 2 3) [(list a b c) (optic-get b (current-update-target))])
- (update (list 1 2 3) [(list a b c) (optic-set b (current-update-target) #t)])
-]
-
-This is cumbersome, especially when you want to perform multiple updates in sequence.
-As such, the library provides helpers like @racket[get] and @racket[modify!] which thread the parameter
-implicitly. Operations like @racket[modify!] have the side effect of mutating the value of the parameter.
-
 @examples[
 #:eval op-eval
-(update (list 1 2 3) [(list a b c) (set! a #t) (modify! b -)])
+#:label "Some more examples"
 (struct posn [x y] #:transparent)
-(update (posn 1 2) [(struct-field posn x x-value) (set! x-value 3)])
+(update (posn 1 2)
+  [(struct-field posn x)
+   (set! x 3)])
 (update (list (posn 1 2) (posn 3 4))
-  [(list (struct-field posn x x-value) p)
-   (modify! x-value -)
+  [(list (struct-field posn x) p)
+   (modify! x -)
    (set! p (posn 5 6))])
 (update (list (posn 1 2) (posn 3 4) (posn 5 6))
-  [(list-of (struct-field posn x x-value)) (modify! x-value -)])
+  [(list-of (struct-field posn x))
+   (modify! x -)])
 (update (list 1 2 3)
-  [(list a b) (error "boom")]
-  [(list a b c) (set! c 4)])
-(update (list 1 2) [(list a b) (get a)])
-(update (list 1 2) [(list a b) (set! a (+ 4 (get b)))])
+  [(list a b)
+  (error "boom")]
+  [(list a b c)
+   (set! c 4)])
+(update (list 1 2)
+  [(list a b)
+   (get a)])
+(update (list 1 2)
+  [(list a b)
+   (set! a (+ 4 (get b)))])
 ]
 
 @section{Patterns}
@@ -103,7 +106,9 @@ Match all the patterns.
 
 @examples[
     #:eval op-eval
-    (update (list 1 2) [(and a (list b c)) (set! b (get a))])
+    (update (list 1 2)
+      [(and a (list b c))
+       (set! b (get a))])
 ]
 }
 
@@ -115,8 +120,12 @@ Matches pairs. @racket[car-pat] gets matched on the @racket[car] (composes the @
 
 @examples[
     #:eval op-eval
-    (update (cons 1 2) [(cons a b) (set! a 3)])
-    (update (list #t #f) [(cons a (cons b _)) (set! b 'true)])
+    (update (cons 1 2)
+      [(cons a b)
+       (set! a 3)])
+    (update (list #t #f)
+      [(cons a (cons b _))
+       (set! b 'true)])
 ]
 }
 
@@ -126,7 +135,9 @@ Matches a list with as many elements as @racket[pat]s. Matches each element agai
 
 @examples[
 #:eval op-eval
-(update (list 1 2) [(list a b) (modify! b -)])
+(update (list 1 2)
+  [(list a b)
+   (modify! b -)])
 ]
 }
 
@@ -136,9 +147,15 @@ Matches a list. Matches each element against @racket[pat], but optics bounds by 
 
 @examples[
 #:eval op-eval
-(update (list 1 2 3 4) [(list-of n) (modify! n sqr)])
-(update '((1 2 3) (4 5 6) () (7)) [(list-of (list-of n)) (modify! n sqr)])
-(update (list (posn 1 2) (posn 3 4)) [(list-of (struct-field posn x)) (modify! x -)])
+(update (list 1 2 3 4)
+  [(list-of n)
+   (modify! n sqr)])
+(update '((1 2 3) (4 5 6) () (7))
+  [(list-of (list-of n))
+   (modify! n sqr)])
+(update (list (posn 1 2) (posn 3 4))
+  [(list-of (struct-field posn x))
+   (modify! x -)])
 ]
 }
 
@@ -155,16 +172,24 @@ Cannot be used on fields from a struct's super type.
 
 @examples[
 #:eval op-eval
-(update (posn 1 2) [(struct-field posn x x-value) (set! x-value 3)])
-(update (posn 1 2) [(struct-field posn x) (set! x 3)])
+(update (posn 1 2)
+  [(struct-field posn x x-value)
+   (set! x-value 3)])
+(update (posn 1 2)
+  [(struct-field posn x)
+   (set! x 3)])
 ]
 
 @examples[
 #:eval op-eval
 #:label "Be careful with struct subtypes:"
 (struct posn3 posn [z] #:transparent)
-(update (posn3 3 4 5) [(struct-field posn3 z) (set! z 9)])
-(update (posn3 3 4 5) [(struct-field posn x) (set! x 9)])
+(update (posn3 3 4 5)
+  [(struct-field posn3 z)
+   (set! z 9)])
+(update (posn3 3 4 5)
+  [(struct-field posn x)
+   (set! x 9)])
 ]
 
 Naively trying to use a super type's struct field to perform an update on an instance of the subtype will yield an instance of the super type.
@@ -180,7 +205,9 @@ As such, @racket[forward] and @racket[backward] should be inverse functions of e
 
 @examples[
 #:eval op-eval
-(update 'foo [(iso symbol? symbol->string string->symbol str) (modify! str string-upcase)])
+(update 'foo
+  [(iso symbol? symbol->string string->symbol str)
+   (modify! str string-upcase)])
 ]
 }
 
@@ -195,7 +222,9 @@ this way.
 
 @examples[
 #:eval op-eval
-(update (cons 1 2) [(optic cons? car-lens a) (modify! a sub1)])
+(update (cons 1 2)
+  [(optic cons? car-lens a)
+   (modify! a sub1)])
 ]
 }
 
@@ -203,12 +232,30 @@ this way.
 
 @racket[get], @racket[optic-set!], and @racket[modify!] are just ordinary procedures that operate on optics. The only thing that is special about them is that they know about the current target of an @racket[update].
 
+@defparam[current-update-target target any/c]{
+  A parameter that is equal to the current target of an @racket[update] expression.
+  Used in functions like @racket[get] and @racket[modify!].
+
+  @examples[
+    #:eval op-eval
+    (update (list 1 2)
+      [(list a b)
+       (current-update-target)])
+    (update (list 1 2)
+      [(list a b)
+       (set! a 4)
+       (current-update-target)])
+  ]
+}
+
 @defproc[(get [optic lens?]) any/c]{
   Gets the focus of @racket[optic] using @racket[current-update-target].
 
   @examples[
     #:eval op-eval
-    (update (cons 1 2) [(cons a _) (get a)])
+    (update (cons 1 2)
+      [(cons a _)
+       (get a)])
     (parameterize ([current-update-target (cons 1 2)])
       (get car-lens))
   ]
@@ -221,8 +268,12 @@ this way.
 
   @examples[
     #:eval op-eval
-    (update (cons 1 2) [(cons a _) (optic-set! a #t)])
-    (update (cons 1 2) [(cons a _) (set! a #t)])
+    (update (cons 1 2)
+      [(cons a _)
+       (optic-set! a #t)])
+    (update (cons 1 2)
+      [(cons a _)
+       (set! a #t)])
     (current-update-target (cons 1 2))
     (optic-set! car-lens -1)
     (current-update-target)
@@ -234,7 +285,9 @@ this way.
 
   @examples[
     #:eval op-eval
-    (update (cons 1 2) [(cons a _) (modify! a sub1)])
+    (update (cons 1 2)
+      [(cons a _)
+       (modify! a sub1)])
     (current-update-target (cons 1 2))
     (modify! cdr-lens sqr)
     (current-update-target)
@@ -246,20 +299,11 @@ this way.
 
   @examples[
     #:eval op-eval
-    (update (list 1 2 3) [(list-of a) (fold a + 0)])
+    (update (list 1 2 3)
+      [(list-of a)
+       (fold a + 0)])
     (parameterize ([current-update-target (list 1 2 3)])
       (fold list-traversal cons '()))
-  ]
-}
-
-@defparam[current-update-target target any/c]{
-  A parameter that is equal to the current target of an @racket[update] expression.
-  Used in functions like @racket[get] and @racket[modify!].
-
-  @examples[
-    #:eval op-eval
-    (update (list 1 2) [(list a b) (current-update-target)])
-    (update (list 1 2) [(list a b) (set! a 4) (current-update-target)])
   ]
 }
 
@@ -283,6 +327,9 @@ this way.
       (syntax-rules ()
         [(posn x-pat y-pat)
          (and (struct-field posn x x-pat) (struct-field posn y y-pat))]))
-    (update (posn 1 2) [(posn a b) (set! a 4) (modify! b -)])
+    (update (posn 1 2)
+      [(posn a b)
+       (set! a 4)
+       (modify! b -)])
   ]
 }
