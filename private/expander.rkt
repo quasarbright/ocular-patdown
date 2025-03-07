@@ -1,7 +1,7 @@
 #lang racket
 
 (module+ test (require rackunit))
-(require syntax-spec-v2
+(require syntax-spec-v3
          "../optics/traversal.rkt"
          "../optics/isomorphism.rkt"
          "../optics/lens.rkt"
@@ -68,6 +68,7 @@
          define-update-syntax)
 
 (syntax-spec
+  (binding-class optic-var #:reference-compiler optic-var-reference-compiler)
   (extension-class pattern-macro
                    #:description "update pattern macro"
                    #:binding-space pattern-update)
@@ -76,13 +77,13 @@
                         #:description "pattern"
                         #:allow-extension pattern-macro
                         #:binding-space pattern-update
-                        v:racket-var
+                        v:optic-var
                         #:binding (export v)
                         _
                         (optic target?:racket-expr o:racket-expr p:pat)
                         #:binding (re-export p)
                         (and2 p1:pat p2:pat)
-                        #:binding (re-export p1 p2)
+                        #:binding [(re-export p1) (re-export p2)]
                         (#%? pred:racket-expr))
 
   (host-interface/expression (update* target:racket-expr p:pat body:racket-expr on-fail:racket-expr)
@@ -129,10 +130,12 @@
     #:datum-literals (cons list list-of struct-field iso optic and2 ? _)
     ())
 
-  (define (make-optic-set!-transformer current-optic-stx)
-    (define/syntax-parse current-optic current-optic-stx)
-    (make-variable-like-transformer #'current-optic
-                                    #'(λ (val) (optic-set! current-optic val)))))
+  (define optic-var-reference-compiler
+    (make-variable-like-reference-compiler
+     (lambda (id) id)
+     (syntax-parser
+       [(set! id val)
+        #'(optic-set! id val)]))))
 
 (define-syntax validate-target
   (syntax-parser
@@ -171,7 +174,7 @@
      (syntax-parse #'p
        #:literal-sets (pattern-literals)
        [var:id
-        #'(let-syntax ([var (make-optic-set!-transformer #'current-optic)])
+        #'(let ([var current-optic])
             body)]
        [_
         #'body]

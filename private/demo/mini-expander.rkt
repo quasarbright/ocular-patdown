@@ -36,11 +36,9 @@
                        body
                        ...)))))
 
-(define-syntax define-update-syntax
-  (syntax-parser
-    [(_ name:id rhs:expr)
-     #:with spaced-name ((make-interned-syntax-introducer 'pattern-update) (attribute name) 'add)
-     #'(define-syntax spaced-name (pattern-macro rhs))]))
+(define-syntax-rule
+  (define-update-syntax m rhs)
+  (define-dsl-syntax m pattern-macro rhs))
 
 (define-update-syntax cons (syntax-rules () [(cons a d) (and (optic car-lens a) (optic cdr-lens d))]))
 (define-update-syntax list (syntax-rules () [(list) _] [(list p0 p ...) (cons p0 (list p ...))]))
