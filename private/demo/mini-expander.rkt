@@ -35,7 +35,8 @@
         (bind-optics identity-iso p
                      (parameterize ([current-update-target target-v])
                        body
-                       ...)))))
+                       ...
+                       (current-update-target))))))
 
 (define-syntax-rule
   (define-update-syntax m rhs)
@@ -85,14 +86,10 @@
 ; set the focus of the current target under 'optic'
 ; don't use this. use set!
 (define (optic-set! optic focus)
-  (current-update-target (optic-set optic (current-update-target) focus))
-  (current-update-target))
+  (current-update-target (optic-set optic (current-update-target) focus)))
 ; apply a function to update the focus of the current target under 'optic'
 (define (modify! optic func)
-  (current-update-target (traversal-map optic (current-update-target) func))
-  (current-update-target))
-; fold over the current target's foci under 'traversal'
-(define (fold traversal proc init) (traversal-foldl traversal (current-update-target) proc init))
+  (current-update-target (traversal-map optic (current-update-target) func)))
 
 (module+ test
   ; you can set values
@@ -122,13 +119,6 @@
   (check-equal? (update (posn 1 2) [(struct-field posn x) (set! x 3)]) (posn 3 2))
   ; list-of pattern creates a traversal which can modify all elements
   (check-equal? (update (list 1 2 3 4) [(list-of a) (modify! a -)]) '(-1 -2 -3 -4))
-  ; you can fold(l) the elements of a traversal
-  (check-equal? (update (list 1 2 3) [(list-of a) (fold a cons '())])
-                (list 3 2 1))
-  ; if the last expression of the body is a get, its value is returned
-  (check-equal? (update '(1 2) [(list a b) (get a)]) 1)
-  ; you can access the optic directly
-  (check-pred lens? (update '(1 2) [(list a b) a]))
   (test-equal? "can use iso to treat an X as a Y"
                (update 'foo [(iso symbol->string string->symbol str) (modify! str string-upcase)])
                'FOO)
@@ -140,9 +130,6 @@
                                    (modify! n -)
                                    (modify! a number->string)])
                (list "-1" -2))
-  (test-equal? "use current-update-target"
-               (update (list 1 2) [(list a b) (optic-set a (current-update-target) 3)])
-               '(3 2))
   (check-equal? (update (list 1 2) [(cons a (cons b _)) (set! a #t) (set! b #f)])
                 (list #t #f))
   (check-equal? (update (list 1 2) [(list a b) (modify! a -) (set! b #t)]) (list -1 #t))
@@ -163,14 +150,9 @@
   (test-equal? "list-of structs works"
                (update (list (posn 1 2) (posn 3 4)) [(list-of (struct-field posn x)) (modify! x -)])
                (list (posn -1 2) (posn -3 4)))
-  (check-equal? (update 1 [_ 2]) 2)
-  (check-pred optic? (update 1 [a a]))
-  (check-equal? (update '(1) [(optic car-lens a) (get a)]) 1)
-  (check-equal? (update '(1 2) [(and a (cons b c)) (map get (list a b c))]) '((1 2) 1 (2)))
-  (check-equal? (update '(1 2) [(list a b) (get b)]) 2)
   (test-equal? "define in clause"
                (update (list 1 2)
                  [(list a b)
-                  (define a^ (set! a (add1 (get a))))
+                  (define a^ (sub1 (get a)))
                   (set! a a^)])
-               (list (list 2 2) 2)))
+               (list 0 2)))
