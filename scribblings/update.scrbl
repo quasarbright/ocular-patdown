@@ -72,8 +72,15 @@ id
 (list-of pat)
 (struct-field struct-id id pat)
 (struct-field struct-id id)
+(struct-id field-spec ...)
 (iso expr expr expr pat)
 (optic expr expr pat)
+]
+
+@racketgrammar[
+field-spec
+[field-id pat]
+field-id
 ]
 
 More details on the different patterns:
@@ -194,6 +201,20 @@ Cannot be used on fields from a struct's super type.
 
 Naively trying to use a super type's struct field to perform an update on an instance of the subtype will yield an instance of the super type.
 }
+
+@defform[
+(struct-id field-spec ...)
+]
+
+A wrapper around @racket[struct-field] for syntactic convenience. Order of fields doesn't matter and it is not necessary to supply all fields.
+
+@examples[
+#:eval op-eval
+(update (posn 1 2)
+  [(posn y [x z])
+   (set! y 3)
+   (set! z 4)])
+]
 
 @defform[
 (iso target? forward backward pat)
