@@ -23,10 +23,15 @@
     v:optic-var
     #:binding (export v)
     _
+    ;; ex: (posn [y y^] x)
+    ;; order doesn't matter, field sub-pattern is optional, don't need all fields
+    (~> (name:struct-id field ...)
+        #'(struct* name field ...))
     (optic o:racket-expr p:pat)
     #:binding (re-export p)
     (and2 p1:pat p2:pat)
-    #:binding [(re-export p1) (re-export p2)])
+    #:binding
+    [(re-export p1) (re-export p2)])
 
   (host-interface/expression
     (update target:racket-expr [p:pat body:racket-body ...])
@@ -45,6 +50,16 @@
 (define-update-syntax cons (syntax-rules () [(cons a d) (and (optic car-lens a) (optic cdr-lens d))]))
 (define-update-syntax list (syntax-rules () [(list) _] [(list p0 p ...) (cons p0 (list p ...))]))
 (define-update-syntax list-of (syntax-rules () [(listof p) (optic list-traversal p)]))
+(define-update-syntax struct*
+  (syntax-parser
+    [(_ struct-name:struct-id field ...)
+     #'(and (struct*/help struct-name field) ...)]))
+(define-update-syntax struct*/help
+  (syntax-parser
+    [(_ struct-name:struct-id field-name:id)
+     #'(struct-field struct-name field-name field-name)]
+    [(_ struct-name:struct-id [field-name:id field-pat])
+     #'(struct-field struct-name field-name field-pat)]))
 (define-update-syntax struct-field
   (syntax-parser [(_ struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
                   #'(optic (struct-lens struct-name field-name) field-pat)]))
@@ -117,6 +132,10 @@
   (check-equal? (update (posn 1 2) [(struct-field posn x a) (set! a 3)]) (posn 3 2))
   ; without a pattern after the field name, the field's optic is bound to the name of the field
   (check-equal? (update (posn 1 2) [(struct-field posn x) (set! x 3)]) (posn 3 2))
+  (check-equal? (update (posn 1 2) [(posn [x a]) (set! a 3)])
+                (posn 3 2))
+  (check-equal? (update (posn 1 2) [(posn x) (set! x 3)])
+                (posn 3 2))
   ; list-of pattern creates a traversal which can modify all elements
   (check-equal? (update (list 1 2 3 4) [(list-of a) (modify! a -)]) '(-1 -2 -3 -4))
   (test-equal? "can use iso to treat an X as a Y"
