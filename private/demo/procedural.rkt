@@ -30,13 +30,17 @@
   (check-equal? (posn-move-to-right (posn 1 2) 4)
                 (posn 5 2)))
 
+;;> so far we haven't gone deep. at work, I occasionally need deep immutable updates that go down several levels
+;;> maybe even show the js example of modifying a field deep in a json
+
 ;; teaser
 #;(define (rect-move-to-right rct dx)
     (update rct
-      [(struct-field rct top-left (struct-lens posn x))
+      [#;(struct-field rect top-left (struct-lens posn x))
+       (rect [top-left (posn [x])])
        (set! x (+ (get x) dx))]))
 
-;; lenses
+;;; lenses
 
 ;; rectangle? number? -> rectangle?
 ;; move the rectangle to the left
@@ -62,7 +66,7 @@
 (define (rect-modify-top-left rct proc)
   (struct-copy rect rct [top-left (proc (rect-top-left rct))]))
 
-;; posn? (number? number?) -> posn?
+;; posn? (number? -> number?) -> posn?
 (define (posn-modify-x pos proc)
   (struct-copy posn pos [x (proc (posn-x pos))]))
 
@@ -76,6 +80,12 @@
 #;(define (posn-move-to-right pos dx)
   (posnt-modify-x pos (lambda (x) (+ x dx))))
 
+;; rect? (number? -> number?) -> posn?
+(define (rect-modify-x rct proc)
+  (rect-modify-top-left rct (lambda (pos) (posn-modify-x pos proc))))
+#;(define (rect-move-to-right rct dx)
+  (rect-modify-x rct (lambda (x) (+ x dx))))
+
 ;; A (Modifier A B) is a (A (B -> B) -> A)
 ;; Represents an immutable updater.
 ;; A is the "target" (the overall structure)
@@ -88,9 +98,12 @@
   (lambda (a proc) (mod-a-b a (lambda (b) (mod-b-c b proc)))))
 
 ;; (Modifier rect? number?)
-(define modifiy-rect-x (modifier-compose rect-modify-top-left posn-modify-x))
-#;(define (rect-move-to-right rct dx)
-    (modify-rect-x rct (lambda (x) (+ x dx))))
+#;(define rect-modify-x (modifier-compose rect-modify-top-left posn-modify-x))
+
+;;> we can make struct-modify-field macro, show what it would look like to use
+
+;;> you also might want to just get the value, so in practice, we package the getter and modifier together in a lens
+;;> ex: move rectangle to the right by its width
 
 ;; A (Lens A B) is a
 (struct lens [getter modifier] #:transparent)
@@ -124,6 +137,13 @@
 (define (lens-modify lns a proc)
   ((lens-modifier lns) a proc))
 
+;; K -> (Lens (Hash K V) V)
 (define (hash-key-lens key)
   (lens (lambda (h) (hash-ref h key))
         (lambda (h proc) (hash-set h key (proc (hash-ref h key))))))
+
+#;(define player
+    (hash 'head (rect ...)
+          'chest (rect ...)))
+
+;;> this is overkill, but it becomes necessary when you have very deep immutable updates

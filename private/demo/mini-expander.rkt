@@ -3,7 +3,7 @@
 ;; a smaller version of the update language to demonstrate at a lecture
 
 (module+ test (require rackunit))
-(require syntax-spec-v2
+(require syntax-spec-v3
          "../../optics/traversal.rkt"
          "../../optics/isomorphism.rkt"
          "../../optics/lens.rkt"
@@ -11,6 +11,7 @@
          (for-syntax syntax/parse syntax/transformer syntax/parse/class/struct-id))
 
 (syntax-spec
+  (binding-class optic-var #:reference-compiler optic-var-reference-compiler)
   (extension-class pattern-macro
                    #:description "update pattern macro"
                    #:binding-space pattern-update)
@@ -19,17 +20,17 @@
     #:description "pattern"
     #:allow-extension pattern-macro
     #:binding-space pattern-update
-    v:racket-var
+    v:optic-var
     #:binding (export v)
     _
     (optic o:racket-expr p:pat)
     #:binding (re-export p)
     (and2 p1:pat p2:pat)
-    #:binding (re-export p1 p2))
+    #:binding [(re-export p1) (re-export p2)])
 
   (host-interface/expression
-    (update target:racket-expr [p:pat body:racket-expr ...])
-    #:binding (scope (import p) body)
+    (update target:racket-expr [p:pat body:racket-body ...])
+    #:binding (scope (import p) (import body) ...)
     #'(let ([target-v target])
         (bind-optics identity-iso p
                      (parameterize ([current-update-target target-v])
@@ -54,10 +55,12 @@
     #:datum-literals (optic and2 _)
     ())
 
-  (define (make-optic-set!-transformer current-optic-stx)
-    (define/syntax-parse current-optic current-optic-stx)
-    (make-variable-like-transformer #'current-optic
-                                    #'(λ (val) (optic-set! current-optic val)))))
+  (define optic-var-reference-compiler
+    (make-variable-like-reference-compiler
+     (lambda (id) id)
+     (syntax-parser
+       [(set! id val)
+        #'(optic-set! id val)]))))
 
 (define-syntax bind-optics
   (syntax-parser
@@ -65,7 +68,7 @@
      (syntax-parse #'p
        #:literal-sets (pattern-literals)
        [var:id
-        #'(let-syntax ([var (make-optic-set!-transformer #'current-optic)])
+        #'(let ([var current-optic])
             body)]
        [_
         #'body]
@@ -164,4 +167,10 @@
   (check-pred optic? (update 1 [a a]))
   (check-equal? (update '(1) [(optic car-lens a) (get a)]) 1)
   (check-equal? (update '(1 2) [(and a (cons b c)) (map get (list a b c))]) '((1 2) 1 (2)))
-  (check-equal? (update '(1 2) [(list a b) (get b)]) 2))
+  (check-equal? (update '(1 2) [(list a b) (get b)]) 2)
+  (test-equal? "define in clause"
+               (update (list 1 2)
+                 [(list a b)
+                  (define a^ (set! a (add1 (get a))))
+                  (set! a a^)])
+               (list (list 2 2) 2)))
