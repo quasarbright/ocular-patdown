@@ -4,12 +4,25 @@
 
 ;; motivating example
 
+;; A Posn is a
 (struct posn [x y] #:transparent)
+;; where
+;; x is a number?
+;; y is a number?
+;; represents a position in 2D space
+
+;; A Rect is a
 (struct rect [top-left width height] #:transparent)
+;; where
+;; top-left is a Posn
+;; width is a number?
+;; height is a number?
+;; represents a rectangle
 
 ;; rectangle? number? -> rectangle?
 ;; move the rectangle to the right
 (define (rect-move-to-right rct dx)
+  ;;> struct-copy makes a new rectangle with everything the same except top-left
   (struct-copy rect rct [top-left (posn-move-to-right (rect-top-left rct) dx)]))
 
 (module+ test
@@ -26,13 +39,24 @@
                 (posn 5 2)))
 
 ;;> so far we haven't gone deep. at work, I occasionally need deep immutable updates that go down several levels
-;;> maybe even show the js example of modifying a field deep in a json
+#|
+obj1.x.y = 42
+
+vs
+
+const obj2 = {
+  ...obj1,
+  x: {
+    ...obj1.x,
+    y: 42
+  }
+}
+|#
 
 ;; teaser
 #;(define (rect-move-to-right rct dx)
     (update rct
-      [#;(struct-field rect top-left (struct-lens posn x))
-       (rect [top-left (posn [x])])
+      [(rect [top-left (posn [x])])
        (set! x (+ (get x) dx))]))
 
 ;;; lenses
@@ -73,66 +97,79 @@
 ;; posn? number? -> rectangle?
 ;; move the posn to the right
 #;(define (posn-move-to-right pos dx)
-  (posnt-modify-x pos (lambda (x) (+ x dx))))
+  (posn-modify-x pos (lambda (x) (+ x dx))))
 
 ;; rect? (number? -> number?) -> posn?
 (define (rect-modify-x rct proc)
+  ;;> you might want to go straight here, but it's better to make individual modifiers and i'll show why
   (rect-modify-top-left rct (lambda (pos) (posn-modify-x pos proc))))
 #;(define (rect-move-to-right rct dx)
   (rect-modify-x rct (lambda (x) (+ x dx))))
 
-;; A (Modifier A B) is a (A (B -> B) -> A)
+;; A (Modifier Target Focus) is a (Target (Focus -> Focus) -> Target)
 ;; Represents an immutable updater.
-;; A is the "target" (the overall structure)
-;; B is the "focus" (the piece of the target that gets updated)
-;; Ex: rect-modify-top-left, posn-modify-x
+;; The Target is the overall structure
+;; The Focus is the piece of the target that gets updated
+;; Examples:
+;; rect-modify-top-left is a (Modifier Rect Posn)
+;; posn-modify-x is a (Modifier Posn Number)
+;; rect-modify-x is a (Modifier Rect Number)
 
-;; (Modifier A B) (Modifier B C) -> (Modifier B C)
-(define (modifier-compose mod-a-b mod-b-c)
-  ;; proc is a (c -> c)
-  (lambda (a proc) (mod-a-b a (lambda (b) (mod-b-c b proc)))))
+;;> emphasize the language of target and focus
+
+;; (Modifier Target Middle) (Modifier Middle Focus) -> (Modifier Target Focus)
+;; The focus of the first modifier is the target of the second
+(define (modifier-compose mod-t-m mod-m-f)
+  ;; proc is a (Focus -> Focus)
+  (lambda (target proc) (mod-t-m (lambda (middle) (mod-m-f middle proc)))))
 
 ;; (Modifier rect? number?)
 #;(define rect-modify-x (modifier-compose rect-modify-top-left posn-modify-x))
 
-;;> we can make struct-modify-field macro, show what it would look like to use
+;;> if you're making a library
+;;> we can make struct-modify-field macro
+#;(define rect-modify-top-left (struct-field-modifier rect top-left))
+;; or even easier:
+#;(define-struct-modifiers rect)
+;; defines: rect-modify-top-left, rect-modify-width, rect-modify-height
 
 ;;> you also might want to just get the value, so in practice, we package the getter and modifier together in a lens
 ;;> ex: move rectangle to the right by its width
 
-;; A (Lens A B) is a
+;; A (Lens Target Focus) is a
 (struct lens [getter modifier] #:transparent)
 ;; where
-;; getter is a (A -> B)
-;; modifier is a (Modifier A B)
-;;               (A (B -> B) -> A)
+;; getter is a (Target -> Focus)
+;; modifier is a (Modifier Target Focus)
+;;               (Target (Focus -> Focus) -> Target)
 
 ;; (Lens rect? posn?)
 (define rect-top-left-lens (lens rect-top-left rect-modify-top-left))
 ;; (Lens posn? number?)
 (define posn-x-lens (lens posn-x posn-modify-x))
 
-;; (Lens A B) (Lens B C) -> (Lens A C)
-(define (lens-compose lens-a-b lens-b-c)
+;; (Lens Target Middle) (Lens Middle Focus) -> (Lens Target Focus)
+;; The focus of the first lens is the target of the second
+(define (lens-compose lens-t-m lens-m-f)
   (lens
-   (lambda (a)
-     (let ([b (lens-get lens-a-b a)])
-       (lens-get lens-b-c b)))
+   (lambda (target)
+     (let ([middle (lens-get lens-t-m target)])
+       (lens-get lens-m-f middle)))
    ;; same as reversed function composition
    #;(compose (lens-getter lens-b-c) (lens-getter lens-a-b))
-   ;; proc is a (c -> c)
-   (lambda (a proc)
-     (lens-modify lens-a-b a
-                  (lambda (b)
-                    (lens-modify lens-b-c b proc))))))
+   ;; proc is a (Focus -> Focus)
+   (lambda (target proc)
+     (lens-modify lens-t-m target
+                  (lambda (middle)
+                    (lens-modify lens-m-f middle proc))))))
 
-;; (Lens A B) A -> B
-(define (lens-get lns a)
-  ((lens-getter lns) a))
+;; (Lens Target Focus) Target -> Focus
+(define (lens-get lns target)
+  ((lens-getter lns) target))
 
-;; (Lens A B) A (B -> B) -> A
-(define (lens-modify lns a proc)
-  ((lens-modifier lns) a proc))
+;; (Lens Target Focus) Target (Focus -> Focus) -> Target
+(define (lens-modify lns target proc)
+  ((lens-modifier lns) target proc))
 
 ;; Lens ... -> Lens
 ;; variadic lens composition
@@ -146,6 +183,7 @@
 ;;> what is the identity of lens composition?
 
 ;; {A} (Lens A A)
+;; A lens that targets anything and focuses on the entire target
 (define identity-lens
   (lens (lambda (target) target)
         (lambda (target proc) (proc target))))
@@ -174,6 +212,8 @@
 
 ;;> this is overkill, but it becomes necessary when you have very deep immutable updates
 
+;;> ok, we've talked about fields and hash keys, what about list elements?
+
 ;;; traversals
 
 ;; (Listof rect?) number? -> (Listof rect?)
@@ -184,20 +224,28 @@
 (define (move-rectangles-to-left rcts dx)
   (map (lambda (rct) (rect-move-to-left rct dx)) rcts))
 
+;;> looks like modify
+;;> lenses? no, there's more than one focus
+
+;; (Lens (Listof rect?) rect?)
+;; modify : (Listof rect?) (rect? -> rect?) -> (Listof rect?)
+;; get : (Listof rect?) -> rect?
+
 ;;> no getter, but you can fold
 
-;; A (Traversal A B) is a
+;; A (Traversal Target Focus) is a
 (struct traversal [folder modifier] #:transparent)
 ;; where
-;; folder is a {X} (A (B X -> X) X -> X) ; note the argument order is different from foldl
-;; modifier is a (Modifier A B) = (A (B -> B) -> A) ; note the argument order is different from map
-;; A is the type of the target
-;; B is the type of the foci
+;; folder is a {X} (Target (Focus X -> X) X -> X) ; note the argument order is different from foldl
+;; modifier is a (Modifier Target Focus) = (Target (Focus -> Focus) -> Target)
+;; note the argument order is different from map
 ;; Represents an optic that focuses on zero or more parts of the target
 
 ;; {X} (Traversal (Listof X) X)
 (define list-traversal (traversal (lambda (lst proc init) (foldl proc init lst))
                                   (lambda (lst proc) (map proc lst))))
+
+;;> we do foldl because structures like streams don't support foldr nicely
 
 ;; {X} (Traversal (Listof (Listof X)) X)
 (define lol-traversal
@@ -214,23 +262,27 @@
           lol))))
 
 (module+ test
+  (check-equal? (traversal-modify lol-traversal '((5) () (4 3 2) (1) ()) add1)
+                '((6) () (5 4 3) (2) ()))
   (check-equal? (traversal-fold lol-traversal '((5) () (4 3 2) (1) ()) cons '())
                 '(1 2 3 4 5)))
 
-;; (Traversal A B) (Traversal B C) -> (Traversal A C)
-(define (traversal-compose trv-a-b trv-b-c)
+;; (Traversal Target Middle) (Traversal Middle Focus) -> (Traversal Target Focus)
+;; The foci of the first traversal are used as the targets for the second
+(define (traversal-compose trv-t-m trv-m-f)
   (traversal
-   ;; proc is a (C X -> X)
+   ;; proc is a (Focus X -> X)
    ;; init is a X
-   (lambda (proc init a)
-     (traversal-fold trv-a-b
-                     a
-                     (lambda (b x)
-                       (traversal-fold trv-b-c b proc x))
+   (lambda (proc init target)
+     (traversal-fold trv-t-m target
+                     (lambda (middle x)
+                       (traversal-fold trv-m-f middle proc x))
                      init))
-   ;; proc is a (C -> C)
-   (lambda (a proc)
-     (traversal-modify trv-a-b a (lambda (b) (traversal-modify trv-b-c b proc))))))
+   ;; proc is a (Focus -> Focus)
+   (lambda (target proc)
+     (traversal-modify trv-t-m target
+                       (lambda (middle)
+                         (traversal-modify trv-m-f middle proc))))))
 
 (define (traversal-modify trv target proc) ((traversal-modifier trv) target proc))
 (define (traversal-fold trv target proc init) ((traversal-folder trv) target proc init))
@@ -241,16 +293,19 @@
          trvs))
 
 ;; {A} (Traversal A A)
+;; A traversal that targets and value and only has one focus: the target itself
 (define identity-traversal
   (traversal
    (lambda (target proc init) (proc target init))
    (lambda (target proc) (proc target))))
 
-;; {A B} (Lens A B) -> (Traversal A B)
+;;> what is the relationship between lenses and traversals?
+
+;; {Target Focus} (Lens Target Focus) -> (Traversal Target Focus)
 (define (lens->traversal lns)
   (traversal
-   (lambda (a proc init) (proc (lens-get lns a) init))
-   (lambda (a proc) (lens-modify lns a proc))))
+   (lambda (target proc init) (proc (lens-get lns target) init))
+   (lambda (target proc) (lens-modify lns target proc))))
 
 ;;> note: (lens->traversal identity-lens) = identity-traversal
 
@@ -264,21 +319,28 @@
                       rcts
                       (lambda (x) (+ x dx))))
 
+;;> so far, we've been looking at data inside of a target and updating it.
+;;> There is a related abstraction for when you have two different but equivalent representations of the same data.
+
 ;;; isomorphisms
 
 ;; Symbol -> Symbol
 (define (symbol-upcase sym)
   (string->symbol (string-upcase (symbol->string sym))))
 
-(struct bounds [top-left bot-right] #:transparent)
-
-;; Bounds Number -> Bounds
-(define (bounds-move-to-right bnd dx)
-  (rect->bounds (rect-move-to-right (bounds->rect bnd) dx)))
-
 (module+ test
-  (check-equal? (bounds-move-to-right (bounds (posn 0 0) (posn 1 1)) 1)
-                (bounds (posn 1 0) (posn 2 1))))
+  (check-equal? (symbol-upcase 'foo)
+                'FOO))
+
+;; A Bounds is a
+(struct bounds [top-left bot-right] #:transparent)
+;; where
+;; top-left is a Posn
+;; bot-right is a Posn
+
+;; Example
+(define bounds1 (bounds (posn 10 10) (posn 15 11))); increasing y is down
+(define rect1   (rect   (posn 10 10) 5 1))
 
 (define (bounds->rect bnd)
   (match bnd
@@ -289,6 +351,14 @@
   (match rct
     [(rect (posn x y) width height)
      (bounds (posn x y) (posn (+ x width) (+ y height)))]))
+
+;; Bounds Number -> Bounds
+(define (bounds-move-to-right bnd dx)
+  (rect->bounds (rect-move-to-right (bounds->rect bnd) dx)))
+
+(module+ test
+  (check-equal? (bounds-move-to-right (bounds (posn 0 0) (posn 1 1)) 1)
+                                      (bounds (posn 1 0) (posn 2 1))))
 
 ;;> common pattern is you have two types that are equivalent, but one is more convenient for the operation you're performing,
 ;;> so you convert back and forth
@@ -333,7 +403,7 @@
 ;;> where do isos fit into the optic hierarchy?
 
 (define (iso->lens i)
-  (lens (lambda (a) (iso-forward i a))
+  (lens (lambda (target) (iso-forward i target))
         (lambda (target proc) (iso-modify i target proc))))
 
 ;; (Listof Bounds) Number -> (Listof Bounds)
@@ -351,3 +421,96 @@
                                    1)
                 (list (bounds (posn 1 0) (posn 2 1))
                       (bounds (posn 3 2) (posn 4 3)))))
+
+;;; update
+
+;;> I wanted something like match, but for performing immutable updates like modify
+
+#;
+(define (rect-move-to-right rct dx)
+  (update rct
+    [(rect [top-left (posn [x])])
+     (set! x (+ (get x) dx))]))
+
+;;> patterns look like match patterns, but they're actually building optics and then set! does a modify!
+
+#;
+(match lst
+  [(cons a (cons b c)) body])
+
+#;
+(if (cons? lst)
+    (let ([a (car lst)])
+      (let ([tmp (cdr lst)])
+        (if (cons? tmp)
+            (let ([b (car tmp)])
+              (let ([c (cdr tmp)])
+                body))
+            (error "fail"))))
+    (error "fail"))
+
+#;
+(update lst
+  [(cons a (cons b c)) body])
+#;
+(let ([a car-lens])
+  (let ([tmp cdr-lens])
+    (let ([b (lens-compose tmp car-lens)])
+      (let ([c (lens-compose tmp cdr-lens)])
+        body))))
+;;> we don't even mention lst
+;;> no type checks or on-fail
+;;> nested patterns leads to calling accessors on fields in match,
+;;> but leads to composing optics in update
+
+;;> need some special book-keeping and reference compilers for set! to work how we want
+;;> parameter for current target value. set! does an immutable update and then mutates the parameter
+
+#|
+pat := _
+     | id
+     | (cons car-pat cdr-pat)
+     | (list pat ...)
+     | (list-of pat)                   ; list traversal
+     | (struct-id field-spec ...)      ; struct field lens(es)
+     | (iso a->b-expr b->a-expr b-pat) ; isomorphism
+     | (optic optic-expr focus-pat)    ; arbitrary optic pattern
+     | (and pat ...+)                  ; multiple patterns on the same value
+
+field-spec := [field-id field-pat]
+            | field-id             ; same as [field-id field-id]
+|#
+
+;;> you actually only need optic + and
+;;> the syntax spec/compiler only has variables, optic, and and.
+;;> we use a pattern macro extension class and implement pattern macros to define stuff like cons
+
+#;
+(update lst
+  [(cons a (cons b c)) body])
+#;
+(update lst
+  [(and (optic car-lens a)
+        (optic cdr-lens (and (optic car-lens b)
+                             (optic cdr-lens c))))])
+
+#;(define-update-syntax cons (syntax-rules () [(cons a d) (and (optic car-lens a) (optic cdr-lens d))]))
+
+;; big example
+#;
+(define (move-lob-to-right lob dx)
+  (update lob
+    [(listof (iso bounds->rect rect->bounds
+                  (rect [top-left (posn [x])])))
+     (modify! x (lambda (x) (+ x dx)))]))
+#;
+(define (move-lob-to-right lob dx)
+  (update lob
+    [(optic list-traversal
+            (optic (iso bounds->rect rect->bounds)
+                   (optic (struct-lens rect top-left)
+                          (optic (struct-lens posn x)
+                                 x))))
+     (modify! x (lambda (x) (+ x dx)))]))
+
+;;> if you try to implement listof patterns in match, it ends up being really hard. but here, it's trivial.

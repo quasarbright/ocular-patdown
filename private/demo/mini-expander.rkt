@@ -47,9 +47,31 @@
   (define-update-syntax m rhs)
   (define-dsl-syntax m pattern-macro rhs))
 
-(define-update-syntax cons (syntax-rules () [(cons a d) (and (optic car-lens a) (optic cdr-lens d))]))
-(define-update-syntax list (syntax-rules () [(list) _] [(list p0 p ...) (cons p0 (list p ...))]))
-(define-update-syntax list-of (syntax-rules () [(listof p) (optic list-traversal p)]))
+(define-update-syntax cons
+  (syntax-rules ()
+    [(cons a d)
+     (and (optic car-lens a) (optic cdr-lens d))]))
+(define-update-syntax list
+  (syntax-rules ()
+    [(list)
+     _]
+    [(list p0 p ...)
+     (cons p0 (list p ...))]))
+(define-update-syntax list-of
+  (syntax-rules ()
+    [(listof p)
+     (optic list-traversal p)]))
+(define-update-syntax iso
+  (syntax-rules ()
+    [(iso forward backward pat)
+     (optic (make-iso forward backward) pat)]))
+(define-update-syntax and
+  (syntax-rules ()
+    [(and)
+     _]
+    [(and p0 p ...)
+     (and2 p0 (and p ...))]))
+
 (define-update-syntax struct*
   (syntax-parser
     [(_ struct-name:struct-id field ...)
@@ -60,11 +82,11 @@
      #'(struct-field struct-name field-name field-name)]
     [(_ struct-name:struct-id [field-name:id field-pat])
      #'(struct-field struct-name field-name field-pat)]))
+
 (define-update-syntax struct-field
-  (syntax-parser [(_ struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
-                  #'(optic (struct-lens struct-name field-name) field-pat)]))
-(define-update-syntax iso (syntax-rules () [(iso forward backward pat) (optic (make-iso forward backward) pat)]))
-(define-update-syntax and (syntax-rules () [(and) _] [(and p0 p ...) (and2 p0 (and p ...))]))
+  (syntax-parser
+    [(_ struct-name:struct-id field-name:id (~optional field-pat #:defaults ([field-pat #'field-name])))
+     #'(optic (struct-lens struct-name field-name) field-pat)]))
 
 (begin-for-syntax
   (define-literal-set pattern-literals
