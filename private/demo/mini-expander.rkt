@@ -41,7 +41,11 @@
                      (parameterize ([current-update-target target-v])
                        body
                        ...
-                       (current-update-target))))))
+                       (current-update-target)))))
+
+  (host-interface/expression
+    (get-optic v:optic-var)
+    #'v))
 
 (define-syntax-rule
   (define-update-syntax m rhs)
@@ -95,7 +99,9 @@
 
   (define optic-var-reference-compiler
     (make-variable-like-reference-compiler
-     (lambda (id) id)
+     (syntax-parser
+       [id
+        #'(get id)])
      (syntax-parser
        [(set! id val)
         #'(optic-set! id val)]))))
@@ -125,8 +131,9 @@
 (define (optic-set! optic focus)
   (current-update-target (optic-set optic (current-update-target) focus)))
 ; apply a function to update the focus of the current target under 'optic'
-(define (modify! optic func)
-  (current-update-target (traversal-map optic (current-update-target) func)))
+(define-syntax-rule
+  (modify! v func)
+  (current-update-target (traversal-map (get-optic v) (current-update-target) func)))
 
 (module+ test
   ; you can set values
@@ -145,8 +152,8 @@
   (check-equal? (update (list 7 8 9)
                         [(list a b c)
                          (set! a 1)
-                         (set! b (get a))
-                         (let ([x (get c)])
+                         (set! b a)
+                         (let ([x c])
                            (set! c (add1 x)))])
                 (list 1 1 10))
   ; struct pattern
@@ -179,7 +186,7 @@
   (check-equal? (update '(((1 2) (3)) ((4) ())) [(list-of (list-of (list-of a))) (modify! a -)]) '(((-1 -2) (-3)) ((-4) ())))
   (test-equal? "update in an update works"
                (update '(1 (2 3)) [(list a b)
-                                   (set! b (update (get b) [(list c d) (set! d 4)]))
+                                   (set! b (update b [(list c d) (set! d 4)]))
                                    (set! a #t)])
                '(#t (2 4)))
   (test-equal? "iso composes"
@@ -194,6 +201,6 @@
   (test-equal? "define in clause"
                (update (list 1 2)
                  [(list a b)
-                  (define a^ (sub1 (get a)))
+                  (define a^ (sub1 a))
                   (set! a a^)])
                (list 0 2)))
