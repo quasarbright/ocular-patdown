@@ -12,19 +12,18 @@
          ; Use get, set, modify, etc. on pattern-bound variables.
          ; Under the hood, variables are bound to optics like lenses and traversals
          update
+         ; (modify x proc) apply proc to update the foci of x
+         modify!
+         ; (fold x proc init) foldl over the foci of x
+         fold
+         optic
          (contract-out
           #;(-> lens? any/c)
           ; get the value
           [get (-> lens? any/c)]
           #;(-> lens? any/c any/c)
           ; set the value. You can also just use set!.
-          [optic-set! (-> lens? any/c any/c)]
-          #;(-> traversal? (-> any/c any/c) any/c)
-          ; apply a function to update the value(s)
-          [modify! (-> traversal? (-> any/c any/c) any/c)]
-          #;(-> traversal? (-> A B B) B B)
-          ; foldl over the values
-          [fold (-> traversal? (-> any/c any/c any/c) any/c any/c)])
+          [optic-set! (-> lens? any/c any/c)])
          ; a parameter for the current update target. Gets updated by set, modify, etc.
          ; Useful for using optics with low-level functions. Ex:
          #;(update (list 1 2) [(list a b) (optic-set a (current-update-target) 3)])
@@ -98,7 +97,10 @@
                          (bind-optics identity-iso p
                                       (parameterize ([current-update-target target-v])
                                         body))
-                         on-fail-proc))))
+                         on-fail-proc)))
+
+  (host-interface/expression (optic x:optic-var)
+    #'x))
 
 (define-for-syntax (get-struct-pred-id struct-id-stx)
   (syntax-parse struct-id-stx
@@ -144,10 +146,11 @@
 
   (define optic-var-reference-compiler
     (make-variable-like-reference-compiler
-     (lambda (id) id)
      (syntax-parser
-       [(set! id val)
-        #'(optic-set! id val)]))))
+       [x:id #'(get x)])
+     (syntax-parser
+       [(set! x val)
+        #'(optic-set! x val)]))))
 
 (define-syntax validate-target
   (syntax-parser
@@ -208,11 +211,13 @@
   (current-update-target (optic-set optic (current-update-target) focus))
   (current-update-target))
 ; apply a function to update the focus of the current target under 'optic'
-(define (modify! optic func)
+(define-syntax-rule (modify! x func) (modify!/proc (optic x) func))
+(define (modify!/proc optic func)
   (current-update-target (traversal-map optic (current-update-target) func))
   (current-update-target))
 ; fold over the current target's foci under 'traversal'
-(define (fold traversal proc init) (traversal-foldl traversal (current-update-target) proc init))
+(define-syntax-rule (fold x proc init) (fold/proc (optic x) proc init))
+(define (fold/proc traversal proc init) (traversal-foldl traversal (current-update-target) proc init))
 
 (module+ test
   ; you can set values
@@ -231,8 +236,8 @@
   (check-equal? (update (list 7 8 9)
                         [(list a b c)
                          (set! a 1)
-                         (set! b (get a))
-                         (define x (get c))
+                         (set! b a)
+                         (define x c)
                          (set! c (add1 x))])
                 (list 1 1 10))
   ; struct pattern
@@ -250,9 +255,9 @@
   (check-equal? (update (list 1 2 3) [(list-of a) (fold a cons '())])
                 (list 3 2 1))
   ; if the last expression of the body is a get, its value is returned
-  (check-equal? (update '(1 2) [(list a b) (get a)]) 1)
+  (check-equal? (update '(1 2) [(list a b) a]) 1)
   ; you can access the optic directly
-  (check-pred lens? (update '(1 2) [(list a b) a]))
+  (check-pred lens? (update '(1 2) [(list a b) (optic a)]))
   (test-equal? "can use iso to treat an X as a Y"
                (update 'foo [(iso symbol? symbol->string string->symbol str) (modify! str string-upcase)])
                'FOO)
@@ -273,7 +278,7 @@
                        [(list a b) (set! a 4)])
                (list 4 2))
   (test-equal? "use current-update-target"
-               (update (list 1 2) [(list a b) (optic-set a (current-update-target) 3)])
+               (update (list 1 2) [(list a b) (optic-set (optic a) (current-update-target) 3)])
                '(3 2))
   (check-equal? (update (list 1 2) [(cons a (cons b _)) (set! a #t) (set! b #f)])
                 (list #t #f))
@@ -283,7 +288,7 @@
   (check-equal? (update '(((1 2) (3)) ((4) ())) [(list-of (list-of (list-of a))) (modify! a -)]) '(((-1 -2) (-3)) ((-4) ())))
   (test-equal? "update in an update works"
                (update '(1 (2 3)) [(list a b)
-                                    (set! b (update (get b) [(list c d) (set! d 4)]))
+                                    (set! b (update b [(list c d) (set! d 4)]))
                                     (set! a #t)])
                 '(#t (2 4)))
   (test-equal? "iso composes"
@@ -301,21 +306,22 @@
                        [_ 3])
                3)
   (check-equal? (update 1 [_ 2]) 2)
-  (check-pred optic? (update 1 [a a]))
-  (check-equal? (update '(1) [(optic cons? car-lens a) (get a)]) 1)
-  (check-equal? (update '(1 2) [(and a (cons b c)) (map get (list a b c))]) '((1 2) 1 (2)))
-  (check-equal? (update '(1 2) [(list a b) (get b)]) 2)
+  (check-equal? (update 1 [a a])
+                1)
+  (check-equal? (update '(1) [(optic cons? car-lens a) a]) 1)
+  (check-equal? (update '(1 2) [(and a (cons b c)) (list a b c)]) '((1 2) 1 (2)))
+  (check-equal? (update '(1 2) [(list a b) b]) 2)
   (test-equal? "multi-clause"
                 (update '(1 2)
                         [(list a b c) (error "boom")]
-                        [(list a b) (list (get b) (get a))])
+                        [(list a b) (list b a)])
                 '(2 1))
   ; regression test: (list) used to expand to _, rather than asserting the target is null.
   (test-equal? "list pattern with too few elements fails"
                 (update '(1 2 3)
                         [(list a b) (error "boom")]
-                        [(list a b c) (list (get b) (get a))])
+                        [(list a b c) (list b a)])
                 '(2 1))
   (test-equal? "implicit begin in clause"
-               (update 1 [a (define x (get a)) x])
+               (update 1 [a (define x a) x])
                1))
