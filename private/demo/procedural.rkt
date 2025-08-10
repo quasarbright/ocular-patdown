@@ -59,12 +59,14 @@ const obj2 = {
       [(rect [top-left (posn [x])])
        (set! x (+ (get x) dx))]))
 
+
 ;;; lenses
 
 ;; rectangle? number? -> rectangle?
 ;; move the rectangle to the left
 (define (rect-move-to-left rct dx)
   (struct-copy rect rct [top-left (posn-move-to-left (rect-top-left rct) dx)]))
+
 
 (module+ test
   (check-equal? (rect-move-to-left (rect (posn 10 0) 10 30) 2)
@@ -429,8 +431,9 @@ const obj2 = {
 #;
 (define (rect-move-to-right rct dx)
   (update rct
-    [(rect [top-left (posn [x])])
-     (set! x (+ (get x) dx))]))
+    [(rect [top-left (posn [x] [y])])
+     (set! x (+ (get x) dx))
+     (set! y (+ y (get x)))]))
 
 ;;> patterns look like match patterns, but they're actually building optics and then set! does a modify!
 
@@ -494,7 +497,11 @@ field-spec := [field-id field-pat]
         (optic cdr-lens (and (optic car-lens b)
                              (optic cdr-lens c))))])
 
-#;(define-update-syntax cons (syntax-rules () [(cons a d) (and (optic car-lens a) (optic cdr-lens d))]))
+#;
+(define-update-syntax cons
+  (syntax-rules ()
+    [(cons a d)
+     (and (optic car-lens a) (optic cdr-lens d))]))
 
 ;; big example
 #;
