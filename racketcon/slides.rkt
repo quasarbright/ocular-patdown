@@ -374,6 +374,7 @@
 
 (slide
  #:title "Lens Laws"
+ 'next
  (para "Lenz's law states that the direction of the electric current induced in a conductor by a changing magnetic field is such that the magnetic field created by the induced current opposes changes in the initial magnetic field. It is named after physicist Heinrich Lenz, who formulated it in 1834."))
 
 (slide
@@ -470,7 +471,7 @@
  #:layout 'top
  (vert
   (horiz (t "A") (code (Traversal Target Focus)) (t "is a"))
-  (code (struct lens [folder modifier] #:transparent))
+  (code (struct traversal [folder modifier] #:transparent))
   (t "where")
   (horiz (code folder) (t "is a") (code {X} (Target (Focus X -> X) X -> X)))
   (horiz (code modifier) (t "is a") (code (Target (Focus -> Focus) -> Target)))
@@ -679,6 +680,14 @@
 
 (slide
  #:title "Isomorphisms"
+ (code
+  (define (symbol-upcase sym)
+    (iso-modify symbol<->string
+                sym
+                string-upcase))))
+
+(slide
+ #:title "Isomorphisms"
  (vert
   (para "An" (code (Iso A B)) "is a")
   (code (struct iso [fwd bckwd] #:transparent))
@@ -807,6 +816,8 @@
 
 (slide
  #:title "How to Get Immutable Updates"
+ (t "How can we get immutable updates?")
+ 'next
  (t "Bind variables to lenses!")
  (code
   (update p
@@ -1078,6 +1089,17 @@
  (para "References use" (code lens-get) "and" (code set!) "uses" (code lens-set))
  'next
  (code
+  (binding-class
+   optic-var
+   #:reference-compiler optic-var-reference-compiler)))
+
+(slide
+ #:title "Compiler"
+ #:layout 'top
+ (para "Body compiler")
+ (item "Variable references and" (code set!))
+ (para "References use" (code lens-get) "and" (code set!) "uses" (code lens-set))
+ (code
   (define optic-var-reference-compiler
     (make-variable-like-reference-compiler
      (syntax-parser
@@ -1127,6 +1149,9 @@
                        (current-update-target)
                        func))
     (current-update-target))))
+
+(slide
+  (titlet "That's it!"))
 
 (slide
  #:title "Acknowledgements"
