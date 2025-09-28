@@ -76,9 +76,9 @@
                         #:description "pattern"
                         #:allow-extension pattern-macro
                         #:binding-space pattern-update
+                        _
                         v:optic-var
                         #:binding (export v)
-                        _
                         ;; ex: (posn [y y^] x)
                         ;; order doesn't matter, field sub-pattern is optional, don't need all fields
                         (~> (name:struct-id field ...)
@@ -112,7 +112,14 @@
   (define-dsl-syntax m pattern-macro rhs))
 
 (define-update-syntax cons (syntax-rules () [(cons a d) (and (optic cons? car-lens a) (optic cons? cdr-lens d))]))
-(define-update-syntax list (syntax-rules () [(list) (? null?)] [(list p0 p ...) (cons p0 (list p ...))]))
+(define-update-syntax list
+  (syntax-parser
+    [(list)
+     #'(? null?)]
+    [(list p (~datum ...))
+     #'(list-of p)]
+    [(list p0 p ...)
+     #'(cons p0 (list p ...))]))
 (define-update-syntax list-of (syntax-rules () [(listof p) (optic list? list-traversal p)]))
 (define-update-syntax struct*
   (syntax-parser
@@ -251,6 +258,9 @@
                 (posn 3 2))
   ; list-of pattern creates a traversal which can modify all elements
   (check-equal? (update (list 1 2 3 4) [(list-of a) (modify! a -)]) '(-1 -2 -3 -4))
+  ; ellipsis syntax
+  (check-equal? (update (list 1 2 3 4) [(list a ...) (modify! a -)]) '(-1 -2 -3 -4))
+  (check-equal? (update (list 1 2 3 4) [(list a b ...) (modify! b add1)]) '(1 3 4 5))
   ; you can fold(l) the elements of a traversal
   (check-equal? (update (list 1 2 3) [(list-of a) (fold a cons '())])
                 (list 3 2 1))

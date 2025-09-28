@@ -181,6 +181,15 @@ Matches a list with as many elements as @racket[pat]s. Matches each element agai
 ]
 }
 
+The last pattern can be ellipsized, which will give it the behavior of @racket[list-of] on the tail of the list.
+
+@examples[
+#:eval op-eval
+(update (list 1 2 3 4 5)
+  [(list a b ...)
+   (modify! b add1)])
+]
+
 @defform[(list-of pat)]{
 
 Matches a list. Matches each element against @racket[pat], but optics bounds by @racket[pat] focus on @emph{all} elements, not just one element. Composes @racket[list-traversal].

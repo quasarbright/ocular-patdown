@@ -1,16 +1,27 @@
 #lang slideshow
 
-(require slideshow/code pict/color)
+(require slideshow/code slideshow/text pict/color)
+
+(define (vert . picts) (apply vl-append 10 picts))
+(define (horiz . picts) (apply hc-append 5 picts))
+
+(define-syntax-rule (target datum ...)
+  (highlight (code datum ...) #:color (light (light "blue"))))
+
+(define-syntax-rule (focus datum ...)
+  (highlight (code datum ...) #:color "orange" #:padding 0))
+
+(define (highlight p #:color [color "yellow"] #:padding [padding 10])
+  (cc-superimpose
+   (inset (filled-rectangle (+ padding (pict-width p)) (+ padding (pict-height p))
+                            #:color color
+                            #:draw-border? #f)
+          (- (+ padding 10)))
+   p))
 
 (slide
  (titlet "A Match-Like DSL for Deep Immutable Updates")
  (titlet "Mike Delmonaco"))
-
-(slide
- #:title "Agenda"
- (item "Discovering Lenses")
- (item "update DSL Overview")
- (item "update DSL Implementation"))
 
 (begin
   ; needed to do multiple slides instead of 'next bc of centering issues with multiple uses of code
@@ -46,6 +57,12 @@
     (list 1 2 3 4)
     code:blank
     (code:comment "did not mutate lst!"))))
+
+(slide
+ #:title "Agenda"
+ (item "Discovering Lenses")
+ (item "update DSL Overview")
+ (item "update DSL Implementation"))
 
 (slide
  #:title "Moving Rectangles"
@@ -149,64 +166,6 @@
 
 (slide
  #:title "Modifiers"
- (t "Putting it to use")
- (code
-  (define (rect-move-to-right rct dx)
-    (rect-modify-top-left
-     rct
-     (lambda (top-left)
-       (posn-modify-x
-        top-left
-        (lambda (x) (+ x dx)))))))
- (t "Doesn't look much better :("))
-
-(slide
- #:title "Modifiers"
- (para "This is a modify in a modify. Can we make rect-modify-x?")
- (code
-  (define (rect-move-to-right rct dx)
-    (rect-modify-top-left
-     rct
-     (lambda (top-left)
-       (posn-modify-x
-        top-left
-        #,(framed-code (lambda (x) (+ x dx)))))))))
-
-(slide
- #:title "Modifiers"
- (code
-  (code:comment "rect? (number? -> number?) -> rect?")
-  (define (rect-modify-x rct proc)
-    (rect-modify-top-left
-     rct
-     (lambda (top-left)
-       (posn-modify-x
-        top-left
-        #,(framed-code proc)))))
-  code:blank
-  (define (rect-move-to-right rct dx)
-    (rect-modify-x rct
-      #,(framed-code (lambda (x) (+ x dx)))))))
-
-(define (vert . picts) (apply vl-append 10 picts))
-(define (horiz . picts) (apply hc-append 5 picts))
-
-(define-syntax-rule (target datum ...)
-  (highlight (code datum ...) #:color (light (light "blue"))))
-
-(define-syntax-rule (focus datum ...)
-  (highlight (code datum ...) #:color "orange" #:padding 0))
-
-(define (highlight p #:color [color "yellow"] #:padding [padding 10])
-  (cc-superimpose
-   (inset (filled-rectangle (+ padding (pict-width p)) (+ padding (pict-height p))
-                            #:color color
-                            #:draw-border? #f)
-          (- (+ padding 10)))
-   p))
-
-(slide
- #:title "Modifiers"
  (horiz (t "The") (highlight (t "Target") #:color (light (light "blue"))) (t "is the overall structure"))
  (horiz (t "The") (highlight (t "Focus") #:color "orange") (t "is the piece we're modifying"))
  (code
@@ -215,9 +174,7 @@
   code:blank
   posn-modify-x
   #,(target (posn #,(focus x) y))
-  code:blank
-  rect-modify-x
-  #,(target (rect (posn #,(focus x) y) width height))))
+  code:blank))
 
 (slide
  #:title "Modifiers"
@@ -232,7 +189,6 @@
   (table 3
          (list (code rect-modify-top-left) (t "is a") (code (Modifier Rect Posn))
                (code posn-modify-x) (t "is a") (code (Modifier Posn Number))
-               (code rect-modify-x) (t "is a") (code (Modifier Rect Number))
                )
          lc-superimpose
          cc-superimpose
@@ -241,10 +197,22 @@
 
 (slide
  #:title "Modifiers"
+ (t "Putting it to use")
  (code
-  (code:comment "(Modifier A B) (Modifier B C) -> (Modifier A C)")
-  (define (modifier-compose mod-a-b mod-b-c) ...)
-  code:blank
+  (define (rect-move-to-right rct dx)
+    (rect-modify-top-left
+     rct
+     (lambda (top-left)
+       (posn-modify-x
+        top-left
+        (lambda (x) (+ x dx)))))))
+ (t "Doesn't look much better :(")
+ 'next
+ (t "This is a modify in a modify. Can we make rect-modify-x?"))
+
+(slide
+ #:title "Modifiers"
+ (code
   (code:comment "(Modifier rect? posn?)")
   rect-modify-top-left
   #,(target (rect #,(focus (posn x y)) width height))
@@ -254,9 +222,32 @@
   #,(target (posn #,(focus x) y))
   code:blank
   (code:comment "(Modifier rect? number?)")
-  (modifier-compose rect-modify-top-left
-                    posn-modify-x)
+  (define rect-modify-x
+    (modifier-compose rect-modify-top-left
+                      posn-modify-x))
   #,(target (rect (posn #,(focus x) y) width height))))
+
+(slide
+ #:title "Modifiers"
+ (code
+  (code:comment "(Modifier A B) (Modifier B C) -> (Modifier A C)")
+  (define (modifier-compose a-modify-b b-modify-c)
+    (code:comment "proc is a (C -> C)")
+    (lambda (a proc)
+      (a-modify-b
+       a
+       (lambda (b)
+         (b-modify-c
+          b
+          proc)))))))
+
+(slide
+ #:title "Modifiers"
+ (t "Putting it to use")
+ (code
+  (define (rect-move-to-right rct dx)
+    (rect-modify-x rct
+      (lambda (x) (+ x dx))))))
 
 (slide
  #:title "Lenses"
@@ -422,35 +413,35 @@
             (lambda (rct)
               (rect-move-to-right rct dx)))
          rcts)))
+ 'next
  (t "Looks like a modify!")
- (horiz (t "Can we do ") (code list-elements-lens) (t "?")))
+ (horiz (t "map is like ") (code list-modify-rectangles))
+ (horiz (t "Can we do ") (code list-rectangles-lens) (t "?")))
 
 (slide
  #:title "Lenses for Lists?"
- (t "Target is a list, and we want to provide a function on elements")
+ (t "Target is a list of rectangles, and we want to provide a function on rectangles")
  (code
-  (code:comment "{X} (Lens (Listof X) X)")
-  list-elements-lens
+  (code:comment "(Lens (Listof rect?) rect?)")
+  list-rectangles-lens
   #,(target (list))
-  #,(target (list #,(focus a)))
-  #,(target (list #,(focus a) #,(focus b) #,(focus c) ...))))
+  #,(target (list #,(focus r1)))
+  #,(target (list #,(focus r1) #,(focus r2) #,(focus r3) ...))))
 
 (slide
  #:title "Lenses for Lists?"
  (code
-  (code:comment "{X} (Lens (Listof X) X)")
-  (define list-elements-lens
-    (lens
-     (code:comment "(Listof X) -> X")
-     (lambda (lst) ???) (code:comment "need an X")
-     (code:comment "(Listof X) (X -> X) -> X")
-     (lambda (lst proc)
-       (map proc lst)))))
+  (code:comment "(Lens (Listof rect?) rect?)")
+  list-rectangles-lens
+  #,(framed-code (code:comment "(Listof rect?) -> rect?"))
+  getter
+  (code:comment "(Listof rect?) (rect? -> rect?) -> (Listof rect?)")
+  modifier)
  (t "No single focus to \"get\". There are zero or more foci.")
  (code
   #,(target (list))
-  #,(target (list #,(focus a)))
-  #,(target (list #,(focus a) #,(focus b) #,(focus c) ...))))
+  #,(target (list #,(focus r1)))
+  #,(target (list #,(focus r1) #,(focus r2) #,(focus r3) ...))))
 
 (slide
  #:title "Lenses for Lists?"
@@ -578,6 +569,19 @@
    list-traversal
    (lens->traversal rect-top-left-lens)
    (lens->traversal posn-x-lens))
+  code:blank
+  #,(target (list (rect (posn #,(focus x1) y1) width1 height1)
+                  (rect (posn #,(focus x2) y2) width2 height2)
+                  ...))))
+
+(slide
+ #:title "Combining Lenses and Traversals"
+ (t "Cast lenses to traversals and compose as traversals.")
+ (code
+  (optic-compose
+   list-traversal
+   rect-top-left-lens
+   posn-x-lens)
   code:blank
   #,(target (list (rect (posn #,(focus x1) y1) width1 height1)
                   (rect (posn #,(focus x2) y2) width2 height2)
@@ -724,7 +728,7 @@
  #:title "Combining Isomorphisms and Other Optics"
  (t "Optic to move a bounds to the right like a rect.")
  (code
-  (lens-compose* (iso->lens bounds<->rect)
+  (optic-compose bounds<->rect
                  rect-top-left-lens
                  posn-x-lens)
   code:blank
@@ -736,11 +740,11 @@
  #:title "Combining Isomorphisms and Other Optics"
  (t "Optic to move a list of bounds to the right like rects.")
  (code
-  (traversal-compose*
+  (optic-compose
    list-traversal
-   (lens->traversal (iso->lens bounds<->rect))
-   (lens->traversal rect-top-left-lens)
-   (lens->traversal posn-x-lens))
+   bounds<->rect
+   rect-top-left-lens
+   posn-x-lens)
   code:blank
   #,(target (list (bounds (posn left0 top0) (posn right0 bot0))
                   (bounds (posn left1 top1) (posn right1 bot1))
@@ -768,11 +772,11 @@
  (code
   (define (move-lob-to-right lob dx)
     (traversal-modify
-     #,(frame (code (traversal-compose*
+     #,(frame (code (optic-compose
                      list-traversal
-                     (lens->traversal (iso->lens bounds<->rect))
-                     (lens->traversal rect-top-left-lens)
-                     (lens->traversal posn-x-lens)))
+                     bounds<->rect
+                     rect-top-left-lens
+                     posn-x-lens))
          #:color "blue"
          #:line-width 3)
      lob
@@ -856,7 +860,7 @@
  (t "It's not just lenses")
  (code
   (update posns
-    [(list-of (posn x))
+    [(list (posn x) ...)
      (modify! x (lambda (x) (+ x dx)))]))
  (horiz (t "Uses") (code list-traversal) (t "and") (code traversal-modify)))
 
@@ -896,11 +900,15 @@
 (slide
  #:title "Patterns"
  (t "Grammar for patterns")
- (item (code (struct-name field-pat ...)))
- (item (code (list-of pat)))
- (item (code (cons pat pat)))
- (item (code (list pat ...)))
- (item "..."))
+ (with-font "monaco"
+   (vert
+    (t "<pat> := _")
+    (t "       | <var>")
+    (t "       | (<struct-name> <pat> ...)")
+    (t "       | (cons <pat> <pat>)")
+    (t "       | (list <pat> ...)")
+    (t "       | (list <pat> ... <pat> <ooo>)")
+    (t "<ooo> := ..."))))
 
 (slide
  #:title "Patterns"
@@ -970,10 +978,12 @@
 (slide
  #:title "Patterns"
  (t "Core grammar for patterns")
- (item (code (optic optic-expr pat)))
- (item (code (and pat ...)))
- (item (code id))
- (item (code _)))
+ (with-font "monaco"
+   (vert
+    (t "<pat> := _")
+    (t "       | <var>")
+    (t "       | (optic <racket-expr> <pat>)")
+    (t "       | (and <pat> ...)"))))
 
 
 (slide
@@ -986,9 +996,9 @@
     #:binding-space pattern-update
     (~> (name:struct-id field ...)
         #'(struct* name field ...))
-    v:optic-var
-    #:binding (export v)
     _
+    v:pattern-var
+    #:binding (export v)
     (optic o:racket-expr p:pat)
     #:binding (re-export p)
     (and2 p1:pat p2:pat)
@@ -1009,19 +1019,13 @@
  (t "Built-in Syntactic sugar")
  (code
   (define-dsl-syntax list pattern-macro
-    (syntax-rules ()
-      [(list) _]
+    (syntax-parser
+      [(list)
+       #'_]
+      [(list p (~datum ...))
+       #'(optic list-traversal p)]
       [(list p0 p ...)
-       (cons p0 (list p ...))]))))
-
-(slide
- #:title "Patterns"
- (t "Built-in Syntactic sugar")
- (code
-  (define-dsl-syntax list-of pattern-macro
-    (syntax-rules ()
-      [(listof p)
-       (optic list-traversal p)]))))
+       #'(cons p0 (list p ...))]))))
 
 (slide
  #:title "Compiler"
@@ -1090,8 +1094,8 @@
  'next
  (code
   (binding-class
-   optic-var
-   #:reference-compiler optic-var-reference-compiler)))
+   pattern-var
+   #:reference-compiler pattern-var-reference-compiler)))
 
 (slide
  #:title "Compiler"
@@ -1100,7 +1104,7 @@
  (item "Variable references and" (code set!))
  (para "References use" (code lens-get) "and" (code set!) "uses" (code lens-set))
  (code
-  (define optic-var-reference-compiler
+  (define pattern-var-reference-compiler
     (make-variable-like-reference-compiler
      (syntax-parser
        [x:id #'(lens-get x (current-update-target))])
@@ -1132,7 +1136,7 @@
  (para "Another \"entry point\"")
  (code
   (host-interface/expression
-    (optic x:optic-var)
+    (optic x:pattern-var)
     #'x))
  (para "Reference compiler will not transform the reference"))
 
