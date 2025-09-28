@@ -19,6 +19,12 @@
           (- (+ padding 10)))
    p))
 
+(define-syntax-rule (hide-code datum ...)
+  (hide (code datum ...)))
+
+(define (hide p)
+  (cellophane p 0.1))
+
 (slide
  (titlet "A Match-Like DSL for Deep Immutable Updates")
  (titlet "Mike Delmonaco"))
@@ -990,8 +996,91 @@
  #:title "Patterns"
  (t "syntax-spec grammar declaration for patterns")
  (code
+  #,(hide-code
+     (extension-class pattern-macro
+                      #:binding-space pattern-update))
   (nonterminal/exporting pat
-    #:description "pattern"
+    #,(hide-code
+       #:allow-extension pattern-macro
+       #:binding-space pattern-update
+       (~> (name:struct-id field ...)
+           #'(struct* name field ...)))
+    _
+    v:pattern-var
+    #,(hide-code #:binding (export v))
+    (optic o:racket-expr p:pat)
+    #,(hide-code #:binding (re-export p))
+    (and2 p1:pat p2:pat)
+    #,(hide-code #:binding [(re-export p1) (re-export p2)]))))
+
+(slide
+ #:title "Patterns"
+ (t "syntax-spec grammar declaration for patterns")
+ (code
+  #,(hide-code
+     (extension-class pattern-macro
+                      #:binding-space pattern-update))
+  (nonterminal/exporting pat
+    #,(hide-code
+       #:allow-extension pattern-macro
+       #:binding-space pattern-update
+       (~> (name:struct-id field ...)
+           #'(struct* name field ...)))
+    _
+    v:pattern-var
+    #:binding (export v)
+    (optic o:racket-expr p:pat)
+    #:binding (re-export p)
+    (and2 p1:pat p2:pat)
+    #:binding [(re-export p1) (re-export p2)])))
+
+(slide
+ #:title "Patterns"
+ (t "syntax-spec grammar declaration for patterns")
+ (code
+  (extension-class pattern-macro
+                   #,(hide-code #:binding-space pattern-update))
+  (nonterminal/exporting pat
+    #:allow-extension pattern-macro
+    #,(hide-code
+       #:binding-space pattern-update
+       (~> (name:struct-id field ...)
+           #'(struct* name field ...)))
+    _
+    v:pattern-var
+    #:binding (export v)
+    (optic o:racket-expr p:pat)
+    #:binding (re-export p)
+    (and2 p1:pat p2:pat)
+    #:binding [(re-export p1) (re-export p2)])))
+
+(slide
+ #:title "Patterns"
+ (t "syntax-spec grammar declaration for patterns")
+ (code
+  (extension-class pattern-macro
+                   #:binding-space pattern-update)
+  (nonterminal/exporting pat
+    #:allow-extension pattern-macro
+    #:binding-space pattern-update
+    #,(hide-code
+       (~> (name:struct-id field ...)
+           #'(struct* name field ...)))
+    _
+    v:pattern-var
+    #:binding (export v)
+    (optic o:racket-expr p:pat)
+    #:binding (re-export p)
+    (and2 p1:pat p2:pat)
+    #:binding [(re-export p1) (re-export p2)])))
+
+(slide
+ #:title "Patterns"
+ (t "syntax-spec grammar declaration for patterns")
+ (code
+  (extension-class pattern-macro
+                   #:binding-space pattern-update)
+  (nonterminal/exporting pat
     #:allow-extension pattern-macro
     #:binding-space pattern-update
     (~> (name:struct-id field ...)
@@ -1026,6 +1115,21 @@
        #'(optic list-traversal p)]
       [(list p0 p ...)
        #'(cons p0 (list p ...))]))))
+
+(slide
+ #:title "Compiler"
+ (t "Entry point")
+ (code
+  (host-interface/expression
+    (update target:racket-expr
+            [p:pat body:racket-expr])
+    #:binding (scope (import p) body)
+    #,(hide-code
+       #'(let ([target-v target])
+           (bind-optics identity-iso p
+             (parameterize ([current-update-target
+                             target-v])
+               body)))))))
 
 (slide
  #:title "Compiler"
