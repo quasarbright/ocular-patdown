@@ -793,7 +793,7 @@
  (t "What if match could immutably update the target value?")
  (code
   > (update (rect (posn 1 2) 10 20)
-      [(rect [top-left (posn x y)])
+      [(rect (posn x y) _ _)
        (set! x (+ x 5))
        (set! y (+ y 9))])
   (rect (posn 6 11) 10 20)))
@@ -831,7 +831,7 @@
  (t "Bind variables to lenses!")
  (code
   (update p
-    [(posn x)
+    [(posn x _)
      <body>])
   ~>
   (let ([x (struct-lens posn x)])
@@ -842,7 +842,7 @@
  (t "For nested patterns, bind pattern variables to composed lenses.")
  (code
   (update rct
-    [(rect [top-left (posn x)])
+    [(rect (posn x _) _ _)
      <body>])
   ~>
   (let ([tmp (struct-lens rect top-left)])
@@ -855,7 +855,7 @@
  (horiz (t "For ") (code set!) (t "and references in the body, we convert to lens operations."))
  (code
   (update rct
-    [(rect [top-left (posn x)])
+    [(rect (posn x _) _ _)
      (set! x (+ x 2))])
   ~>
   (let (...)
@@ -866,7 +866,7 @@
  (t "It's not just lenses")
  (code
   (update posns
-    [(list (posn x) ...)
+    [(list (posn x _) ...)
      (modify! x (lambda (x) (+ x dx)))]))
  (horiz (t "Uses") (code list-traversal) (t "and") (code traversal-modify)))
 
@@ -935,7 +935,7 @@
   code:blank
   code:blank
   (update psn
-    [(posn x) <body>])
+    [(posn x _) <body>])
   ~>
   (let ([x (struct-lens posn x)]) <body>)))
 
