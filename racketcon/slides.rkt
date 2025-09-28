@@ -19,6 +19,42 @@
           (- (+ padding 10)))
    p))
 
+
+(define DOT_SIZE 15)
+(define dot (inset (colorize (disk DOT_SIZE) "black") (* -1/2 DOT_SIZE)))
+(define bg (rectangle 300 300))
+(define red-rect (filled-rectangle 100 200 #:color "red"))
+(define annotated-rect
+  (pin-arrow-line
+   15
+   (pin-arrow-line
+    15
+    (lt-superimpose
+     red-rect
+     dot)
+    dot cc-find
+    red-rect rt-find
+    #:line-width 5)
+   dot cc-find
+   red-rect lb-find
+   #:line-width 5))
+(define rect-diagram
+  (scale (pin-over
+          bg
+          100 50
+          annotated-rect)
+         0.75))
+(define bounds-diagram
+  (scale (pin-over
+          bg
+          100 50
+          (rb-superimpose
+           (lt-superimpose
+            red-rect
+            dot)
+           dot))
+         0.75))
+
 (define-syntax-rule (hide-code datum ...)
   (hide (code datum ...)))
 
@@ -77,11 +113,7 @@
   (struct posn [x y] #:transparent)
   (struct rect [top-left width height] #:transparent)
   (define red-rectangle (rect (posn 100 50) 100 200)))
- (scale (pin-over
-         (rectangle 300 300)
-         100 50
-         (filled-rectangle 100 200 #:color "red"))
-        0.75))
+ rect-diagram)
 
 (slide
  #:title "Moving Rectangles"
@@ -93,17 +125,17 @@
      rect rct
      [top-left (posn-move-to-right (rect-top-left rct)
                                    dx)]))
-  (rect-move-to-right red-rectangle 50))
+  (rect-move-to-right red-rectangle 100))
  (scale (hc-append
          (pin-over
-          (rectangle 300 300)
+          bg
           100 50
-          (filled-rectangle 100 200 #:color "red"))
+          annotated-rect)
          (arrow 30 0)
          (pin-over
-          (rectangle 300 300)
-          150 50
-          (filled-rectangle 100 200 #:color "red")))
+          bg
+          200 50
+          annotated-rect))
         0.75))
 
 (slide
@@ -116,17 +148,17 @@
      rect rct
      [top-left (posn-move-to-left (rect-top-left rct)
                                   dx)]))
-  (rect-move-to-left red-rectangle 50))
+  (rect-move-to-left red-rectangle 100))
  (scale (hc-append
          (pin-over
-          (rectangle 300 300)
+          bg
           100 50
-          (filled-rectangle 100 200 #:color "red"))
+          annotated-rect)
          (arrow 30 0)
          (pin-over
-          (rectangle 300 300)
-          50 50
-          (filled-rectangle 100 200 #:color "red")))
+          bg
+          0 50
+          annotated-rect))
         0.75))
 
 (define-syntax-rule (framed-code datum ...)
@@ -614,10 +646,21 @@
   (struct bounds [top-left bot-right] #:transparent)
   (code:comment "where")
   (code:comment "top-left is a Posn")
-  (code:comment "bot-right is a Posn")
-  code:blank
-  (define bounds1 (bounds (posn 10 10) (posn 15 11)))
-  (define rect1   (rect   (posn 10 10)        5  1)))
+  (code:comment "bot-right is a Posn")))
+
+(slide
+ #:title "Equivalent Data Representations"
+ (t "Bounding boxes, equivalent to rectangles")
+ (code
+  (define red-rectangle
+    (rect   (posn 100 50)       100 200))
+  (define red-bounding-box
+    (bounds (posn 100 50) (posn 200 250))))
+ (hc-append
+  20
+  rect-diagram
+  (t "vs")
+  bounds-diagram)
  (t "Let's try moving them to the right."))
 
 (slide
@@ -632,14 +675,16 @@
   #,(target (bounds (posn #,(focus left) top) (posn right bot))))
  (scale (hc-append
          (pin-over
-          (rectangle 300 300)
+          bg
           100 50
-          (filled-rectangle 100 200 #:color "red"))
+          (rb-superimpose (lt-superimpose red-rect dot)
+                          dot))
          (arrow 30 0)
          (pin-over
           (rectangle 300 300)
           200 50
-          (filled-rectangle 50 200 #:color "red")))
+          (rb-superimpose (lt-superimpose (filled-rectangle 50 200 #:color "red") dot)
+                          dot)))
         0.75)
  (t "The left transforms independently from the right"))
 
