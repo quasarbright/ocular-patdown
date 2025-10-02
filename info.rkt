@@ -4,6 +4,8 @@
 (define deps '("base" "syntax-classes-lib" "syntax-spec-v3"))
 (define build-deps '("scribble-lib" "racket-doc" "rackunit-lib"))
 (define scribblings '(("scribblings/main.scrbl" (multi-page) (experimental) "ocular-patdown")))
+(define compile-omit-paths '(#px"private/racketcon/*"))
+(define test-omit-paths '(#px"private/racketcon/*"))
 (define pkg-desc "A library for optics")
 (define version "0.0")
 (define pkg-authors '(mdelmonaco))
