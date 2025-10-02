@@ -1202,6 +1202,7 @@
           #:literal-sets (pattern-literals)
           code:blank
           code:blank
+          [_ #'body]
           [var:id
            #'(let ([var current-optic])
                body)]
