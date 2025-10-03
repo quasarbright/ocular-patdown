@@ -7,5 +7,5 @@
 (define compile-omit-paths '(#px"private/racketcon/*"))
 (define test-omit-paths '(#px"private/racketcon/*"))
 (define pkg-desc "A library for optics")
-(define version "0.0")
+(define version "0.1")
 (define pkg-authors '(mdelmonaco))
