@@ -1,6 +1,6 @@
 #lang slideshow
 
-(require slideshow/code slideshow/text pict/color)
+(require slideshow/code slideshow/text pict/color simple-qr racket/draw)
 
 (define (vert . picts) (apply vl-append 10 picts))
 (define (horiz . picts) (apply hc-append 5 picts))
@@ -1313,9 +1313,18 @@
  (item "The Haskell Lens library")
  (item "The Racket community"))
 
+#;#;
+(qr-write "https://quasarbright.github.io/blog/" "images/blog-qr.png")
+(define blog-qr (bitmap (read-bitmap "images/blog-qr.png"))) ; load bitmap from file
+
+
+
 (slide
  #:title "Ocular Patdown"
  (t "This library and DSL are available in")
- (code ocular-patdown))
-
-;; TODO Acknowledge haskell lens library. you copy some docs like lens laws
+ (code ocular-patdown)
+ #;#;#;#;
+ (t " ")
+ (t "My (mostly Racket) blog")
+ (hyperlinkize (t "https://quasarbright.github.io/blog/"))
+ blog-qr)
