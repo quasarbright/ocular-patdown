@@ -17,7 +17,7 @@
               #|(superscript (symbol->string 'suffix)) ...|# )]))
 @examples[#:hidden #:eval op-eval (require (except-in racket set) ocular-patdown)]
 
-@title{Pattern-based Updating}
+@title[#:tag "update-reference"]{Pattern-based Updating}
 
 @defmodule[ocular-patdown/update]
 
